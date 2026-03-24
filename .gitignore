@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# General
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+
+# Node / JS
+node_modules/
+dist/
+build/
+.npm/
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# IDEs
+.idea/
+.vscode/
+
