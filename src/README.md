@@ -1,4 +1,3 @@
 # Source
 
-Project code will live here once the tech stack and architecture are decided.
-
+This folder contains the webapp source code.

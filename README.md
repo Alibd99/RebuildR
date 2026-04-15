@@ -1,19 +1,22 @@
 # RebuildR — Bachelor’s Project (Uppsala University, 2026)
 
-This repository contains the work for my bachelor’s project in collaboration with the startup **RebuildR**.
+This repository contains a small React + TypeScript start for the project.
 
-## What this repo is (for now)
+## Run locally
 
-- A clean project scaffold (docs, source, scripts)
-- GitHub templates for issues and pull requests
+```bash
+npm install
+npm run dev
+```
 
-## Project brief
+## Build
 
-See `docs/project-brief.md`.
+```bash
+npm run build
+```
 
-## Structure
+## Files
 
-- `docs/` — project brief, meeting notes, decisions (ADRs)
-- `src/` — source code (to be organized once the tech stack is chosen)
-- `scripts/` — one-off scripts and utilities
-
+- `docs/project-brief.md`
+- `docs/webapp-start.md`
+- `src/`
