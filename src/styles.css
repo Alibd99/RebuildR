@@ -100,6 +100,11 @@ button {
     linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent);
 }
 
+.hero-panel-compact {
+  padding-top: 12px;
+  padding-bottom: 24px;
+}
+
 .content-scroll {
   flex: 1;
   overflow-y: auto;
@@ -201,6 +206,26 @@ button {
   letter-spacing: -0.04em;
 }
 
+.text-link,
+.back-link {
+  color: inherit;
+  font-weight: 600;
+}
+
+.text-link {
+  color: var(--green-900);
+  font-size: 0.92rem;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 6px;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 0.92rem;
+}
+
 .card-stack,
 .question-list {
   display: grid;
@@ -218,6 +243,12 @@ button {
   border: 1px solid var(--line);
   border-radius: 22px;
   background: #ffffff;
+}
+
+.action-card-button {
+  display: block;
+  width: 100%;
+  text-align: left;
 }
 
 .action-card-primary {
@@ -463,6 +494,14 @@ button {
   background: linear-gradient(135deg, #c7d8cf, #e5efe8);
 }
 
+.item-image-c {
+  background: linear-gradient(135deg, #d9d0bb, #efe6d2);
+}
+
+.item-image-d {
+  background: linear-gradient(135deg, #d8dbe0, #eceff3);
+}
+
 .item-tag {
   display: inline-flex;
   align-items: center;
@@ -482,6 +521,12 @@ button {
 
 .item-card-wide {
   grid-column: 1 / -1;
+}
+
+.item-card-button {
+  display: block;
+  width: 100%;
+  text-align: left;
 }
 
 .item-card-header {
@@ -516,6 +561,83 @@ button {
 .status-pill-soft {
   background: var(--lavender-100);
   color: #57536b;
+}
+
+.section-tight {
+  padding-top: 6px;
+}
+
+.container-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summary-card {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: #ffffff;
+}
+
+.summary-card strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--ink-900);
+  font-size: 1.3rem;
+  letter-spacing: -0.04em;
+}
+
+.summary-label {
+  color: var(--ink-700);
+  font-size: 0.8rem;
+}
+
+.container-list {
+  display: grid;
+  gap: 12px;
+}
+
+.container-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: #ffffff;
+}
+
+.container-row-content {
+  min-width: 0;
+}
+
+.container-row-top,
+.container-row-bottom {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.container-row-top h3 {
+  margin: 0;
+  font-size: 1.02rem;
+  letter-spacing: -0.03em;
+}
+
+.container-row-content p {
+  margin: 6px 0 10px;
+  color: var(--ink-700);
+  font-size: 0.92rem;
+}
+
+.container-row-bottom {
+  align-items: center;
+}
+
+.container-row-bottom strong {
+  color: var(--ink-900);
 }
 
 .todo-list {
