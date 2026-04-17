@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
 import QrScanner from "./components/QrScanner";
 
-type Screen = "home" | "container" | "scan" | "confirm" | "complete";
+type Screen = "home" | "container" | "detail" | "scan" | "confirm" | "complete";
 type Filter = "all" | "buy" | "rent";
+type ScanMode = "lookup" | "verify";
+type BrowseScreen = "home" | "container";
+type ScanReturnScreen = BrowseScreen | "detail";
 
 type Material = {
   id: string;
@@ -29,7 +32,7 @@ const initialItems: Material[] = [
     location: "Container A",
     price: "900 kr / st",
     type: "buy",
-    status: "Hämtad",
+    status: "Redo",
     imageClass: "item-image-a",
     assignedUser: "Ali",
     scanCode: "door-12",
@@ -75,6 +78,8 @@ const initialItems: Material[] = [
   },
 ];
 
+const normalizeCode = (value: string) => value.trim().toLowerCase();
+
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [filter, setFilter] = useState<Filter>("all");
@@ -83,52 +88,144 @@ function App() {
   const [scanInput, setScanInput] = useState("");
   const [verifyMessage, setVerifyMessage] = useState("");
   const [scannerEnabled, setScannerEnabled] = useState(true);
+  const [scanMode, setScanMode] = useState<ScanMode>("lookup");
+  const [detailReturnScreen, setDetailReturnScreen] =
+    useState<BrowseScreen>("home");
+  const [scanReturnScreen, setScanReturnScreen] =
+    useState<ScanReturnScreen>("home");
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
     [items, selectedId]
   );
 
-  const filteredItems = items.filter((item) => {
-    if (filter === "all") return true;
-    return item.type === filter;
-  });
+  const filteredItems = useMemo(
+    () =>
+      items.filter((item) => {
+        if (filter === "all") return true;
+        return item.type === filter;
+      }),
+    [items, filter]
+  );
 
-  const readyForPickup = items.filter((item) => item.status === "Redo");
+  const userItems = useMemo(
+    () => items.filter((item) => item.assignedUser === currentUser),
+    [items]
+  );
 
-  const openScan = (itemId: string) => {
-  setSelectedId(itemId);
-  setScanInput("");
-  setVerifyMessage("");
-  setScannerEnabled(true);
-  setScreen("scan");
+  const readyForPickup = useMemo(
+    () =>
+      userItems.filter(
+        (item) => item.status === "Redo" || item.status === "Uthyrbar"
+      ),
+    [userItems]
+  );
+
+  const ownReadyCount = readyForPickup.length;
+
+  const resetScanState = () => {
+    setScanInput("");
+    setVerifyMessage("");
+    setScannerEnabled(true);
   };
 
-  const verifyPickup = () => {
-    if (!selectedItem) return;
+  const lookupItemByCode = (code: string) =>
+    items.find(
+      (item) => normalizeCode(item.scanCode) === normalizeCode(code)
+    ) ?? null;
 
-    if (selectedItem.assignedUser !== currentUser) {
+  const openDetail = (itemId: string, returnScreen: BrowseScreen) => {
+    setSelectedId(itemId);
+    setDetailReturnScreen(returnScreen);
+    resetScanState();
+    setScreen("detail");
+  };
+
+  const openLookupScan = (returnScreen: BrowseScreen) => {
+    setSelectedId(null);
+    setScanMode("lookup");
+    setScanReturnScreen(returnScreen);
+    resetScanState();
+    setScreen("scan");
+  };
+
+  const openVerifyScan = (itemId: string) => {
+    setSelectedId(itemId);
+    setScanMode("verify");
+    setScanReturnScreen("detail");
+    resetScanState();
+    setScreen("scan");
+  };
+
+  const verifyPickup = (
+    codeValue: string = scanInput,
+    itemOverride?: Material | null
+  ) => {
+    const targetItem = itemOverride ?? selectedItem ?? lookupItemByCode(codeValue);
+
+    if (!targetItem) {
+      setVerifyMessage("⚠️ Ingen artikel matchade QR-koden.");
+      return false;
+    }
+
+    setSelectedId(targetItem.id);
+
+    if (targetItem.assignedUser !== currentUser) {
       setVerifyMessage("❌ Fel användare – materialet är inte tilldelat dig.");
-      return;
+      return false;
     }
 
-    if (selectedItem.status === "Kontroll") {
+    if (targetItem.status === "Kontroll") {
       setVerifyMessage("⚠️ Materialet väntar fortfarande på kontroll.");
-      return;
+      return false;
     }
 
-    if (selectedItem.status === "Hämtad") {
+    if (targetItem.status === "Hämtad") {
       setVerifyMessage("ℹ️ Materialet är redan markerat som hämtat.");
-      return;
+      return false;
     }
 
-    if (scanInput.trim().toLowerCase() !== selectedItem.scanCode.toLowerCase()) {
-      setVerifyMessage("⚠️ Fel materialkod – kontrollera att du har rätt artikel.");
-      return;
+    if (
+      normalizeCode(codeValue) !== normalizeCode(targetItem.scanCode)
+    ) {
+      setVerifyMessage(
+        "⚠️ Fel materialkod – kontrollera att du har rätt artikel."
+      );
+      return false;
     }
 
-    setVerifyMessage("✅ Verifiering lyckades.");
+    setVerifyMessage("");
     setScreen("confirm");
+    return true;
+  };
+
+  const handleScanResult = (text: string) => {
+    setScanInput(text);
+    setVerifyMessage("");
+    setScannerEnabled(false);
+
+    if (scanMode === "lookup") {
+      const foundItem = lookupItemByCode(text);
+
+      if (!foundItem) {
+        setVerifyMessage("⚠️ Ingen artikel matchade QR-koden.");
+        return;
+      }
+
+      setSelectedId(foundItem.id);
+      setDetailReturnScreen(
+        scanReturnScreen === "container" ? "container" : "home"
+      );
+      setScreen("detail");
+      return;
+    }
+
+    verifyPickup(text);
+  };
+
+  const handleScannerError = (message: string) => {
+    setVerifyMessage(`⚠️ ${message}`);
+    setScannerEnabled(false);
   };
 
   const confirmPickup = () => {
@@ -142,6 +239,32 @@ function App() {
 
     setScreen("complete");
   };
+
+  const currentScanBackScreen =
+    scanReturnScreen === "detail" ? "detail" : scanReturnScreen;
+
+  const currentDetailMessage = (() => {
+    if (!selectedItem) return "";
+
+    if (selectedItem.status === "Hämtad") {
+      return "Artikeln är redan markerad som hämtad.";
+    }
+
+    if (selectedItem.status === "Kontroll") {
+      return "Artikeln väntar fortfarande på kontroll innan den kan lämnas ut.";
+    }
+
+    if (selectedItem.assignedUser !== currentUser) {
+      return `Artikeln är tilldelad ${selectedItem.assignedUser}.`;
+    }
+
+    return "Artikeln kan verifieras med QR-kod vid upphämtning.";
+  })();
+
+  const detailActionEnabled =
+    selectedItem?.assignedUser === currentUser &&
+    selectedItem?.status !== "Hämtad" &&
+    selectedItem?.status !== "Kontroll";
 
   return (
     <main className="app-shell">
@@ -180,15 +303,7 @@ function App() {
                     <span>Öppen nu</span>
                   </div>
                   <strong>Inloggad: {currentUser}</strong>
-                  <p>
-                    {
-                      items.filter(
-                        (item) =>
-                          item.status === "Redo" && item.assignedUser === currentUser
-                      ).length
-                    }{" "}
-                    artiklar redo för upphämtning
-                  </p>
+                  <p>{ownReadyCount} artiklar redo för upphämtning</p>
                 </article>
               </section>
 
@@ -211,22 +326,11 @@ function App() {
                   <button
                     className="action-card action-card-button"
                     type="button"
-                    onClick={() => {
-                      const firstOwnReadyItem =
-                        items.find(
-                          (item) =>
-                            item.assignedUser === currentUser &&
-                            item.status !== "Hämtad"
-                        ) ?? null;
-
-                      if (firstOwnReadyItem) {
-                        openScan(firstOwnReadyItem.id);
-                      }
-                    }}
+                    onClick={() => openLookupScan("home")}
                   >
                     <div className="action-icon action-icon-scan" />
                     <h3>Skanna / verifiera</h3>
-                    <p>Verifiera att rätt person hämtar rätt material.</p>
+                    <p>Skanna en QR-kod och öppna rätt artikel direkt.</p>
                   </button>
 
                   <button
@@ -252,35 +356,37 @@ function App() {
                   <h2>Redo för upphämtning</h2>
                 </div>
 
-                <div className="item-list">
-                  {readyForPickup.map((item) => (
-                    <article className="item-card" key={item.id}>
-                      <div className="item-card-top">
-                        <div className={`item-image ${item.imageClass}`} />
-                        <span className="item-tag">Redo</span>
-                      </div>
+                {readyForPickup.length > 0 ? (
+                  <div className="item-list">
+                    {readyForPickup.map((item) => (
+                      <article className="item-card" key={item.id}>
+                        <div className="item-card-top">
+                          <div className={`item-image ${item.imageClass}`} />
+                          <span className="item-tag">Redo</span>
+                        </div>
 
-                      <h3>{item.name}</h3>
-                      <p>{item.details}</p>
+                        <h3>{item.name}</h3>
+                        <p>{item.details}</p>
+                        <strong>{item.location}</strong>
 
-                      <strong>
-                        {item.assignedUser === currentUser
-                          ? "Tilldelad dig"
-                          : `Tilldelad ${item.assignedUser}`}
-                      </strong>
-
-                      <div style={{ marginTop: "10px" }}>
-                        <button
-                          className="text-link"
-                          type="button"
-                          onClick={() => openScan(item.id)}
-                        >
-                          Verifiera
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
+                        <div className="inline-actions">
+                          <button
+                            className="text-link"
+                            type="button"
+                            onClick={() => openDetail(item.id, "home")}
+                          >
+                            Visa detalj
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <article className="card">
+                    <h3>Inget redo just nu</h3>
+                    <p>Det finns inga artiklar som väntar på upphämtning.</p>
+                  </article>
+                )}
               </section>
 
               <section className="section">
@@ -313,6 +419,16 @@ function App() {
                       <h3>{item.name}</h3>
                       <p>{item.details}</p>
                       <strong>{item.price}</strong>
+
+                      <div className="inline-actions">
+                        <button
+                          className="text-link"
+                          type="button"
+                          onClick={() => openDetail(item.id, "home")}
+                        >
+                          Visa detalj
+                        </button>
+                      </div>
                     </article>
                   ))}
                 </div>
@@ -413,13 +529,13 @@ function App() {
                           </span>
                         </div>
 
-                        <div style={{ marginTop: "10px" }}>
+                        <div className="inline-actions">
                           <button
                             className="text-link"
                             type="button"
-                            onClick={() => openScan(item.id)}
+                            onClick={() => openDetail(item.id, "container")}
                           >
-                            Verifiera
+                            Visa detalj
                           </button>
                         </div>
                       </div>
@@ -430,27 +546,106 @@ function App() {
             </>
           )}
 
+          {screen === "detail" && selectedItem && (
+            <>
+              <section className="hero-panel hero-panel-compact">
+                <button
+                  className="back-link"
+                  type="button"
+                  onClick={() => setScreen(detailReturnScreen)}
+                >
+                  ← Tillbaka
+                </button>
+                <p className="eyebrow">{selectedItem.location}</p>
+                <h1>{selectedItem.name}</h1>
+                <p className="lead">{selectedItem.description}</p>
+              </section>
+
+              <section className="section">
+                <article className="card">
+                  <div className="detail-grid">
+                    <div className="detail-row">
+                      <span>Status</span>
+                      <strong>{selectedItem.status}</strong>
+                    </div>
+                    <div className="detail-row">
+                      <span>Typ</span>
+                      <strong>{selectedItem.type === "rent" ? "Hyra" : "Köp"}</strong>
+                    </div>
+                    <div className="detail-row">
+                      <span>Pris</span>
+                      <strong>{selectedItem.price}</strong>
+                    </div>
+                    <div className="detail-row">
+                      <span>Tilldelad</span>
+                      <strong>
+                        {selectedItem.assignedUser === currentUser
+                          ? "Du"
+                          : selectedItem.assignedUser}
+                      </strong>
+                    </div>
+                    <div className="detail-row">
+                      <span>QR-kod</span>
+                      <strong>{selectedItem.scanCode}</strong>
+                    </div>
+                  </div>
+
+                  <div className="message-box message-box-soft">
+                    {currentDetailMessage}
+                  </div>
+
+                  <div className="item-actions">
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={() => openVerifyScan(selectedItem.id)}
+                      disabled={!detailActionEnabled}
+                    >
+                      Skanna och verifiera
+                    </button>
+
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => setScreen(detailReturnScreen)}
+                    >
+                      Tillbaka
+                    </button>
+                  </div>
+                </article>
+              </section>
+            </>
+          )}
+
           {screen === "scan" && (
             <>
               <section className="hero-panel hero-panel-compact">
                 <button
                   className="back-link"
                   type="button"
-                  onClick={() => setScreen("home")}
+                  onClick={() => setScreen(currentScanBackScreen)}
                 >
                   ← Tillbaka
                 </button>
-                <p className="eyebrow">Verifiering</p>
-                <h1>Skanna material</h1>
+                <p className="eyebrow">
+                  {scanMode === "lookup" ? "Skanna" : "Verifiering"}
+                </p>
+                <h1>
+                  {scanMode === "lookup"
+                    ? "Skanna QR-kod"
+                    : "Verifiera upphämtning"}
+                </h1>
                 <p className="lead">
-                  Kontrollera att rätt person hämtar rätt material.
+                  {scanMode === "lookup"
+                    ? "Skanna en QR-kod för att öppna rätt artikel direkt."
+                    : "Skanna QR-koden på artikeln för att kontrollera upphämtningen."}
                 </p>
               </section>
 
               <section className="section">
                 <article className="card">
-                  {selectedItem ? (
-                    <>
+                  {scanMode === "verify" && selectedItem ? (
+                    <div className="scan-target">
                       <h3>{selectedItem.name}</h3>
                       <p>{selectedItem.details}</p>
                       <p>Plats: {selectedItem.location}</p>
@@ -461,67 +656,77 @@ function App() {
                           : selectedItem.assignedUser}
                       </p>
                       <p>
-                        Demo-kod: <strong>{selectedItem.scanCode}</strong>
+                        Testkod: <strong>{selectedItem.scanCode}</strong>
                       </p>
-                      
-
-                      <div style={{ marginTop: "16px" }}>
-                        {scannerEnabled && (
-                          <QrScanner
-                            onScan={(text) => {
-                              console.log(text);
-                              setScanInput(text);
-                              setVerifyMessage("");
-                              setScannerEnabled(false);
-                            }}
-                          />
-                        )}
-
-                        <input
-                          value={scanInput}
-                          onChange={(e) => setScanInput(e.target.value)}
-                          placeholder="Skriv eller skanna material-ID"
-                          style={{
-                            width: "100%",
-                            minHeight: "44px",
-                            padding: "0 12px",
-                            borderRadius: "12px",
-                            border: "1px solid #dce6dc",
-                            marginTop: "16px",
-                            marginBottom: "16px",
-                          }}
-                        />
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={() => {
-                            setScanInput("");
-                            setVerifyMessage("");
-                            setScannerEnabled(true);
-                          }}
-                        >
-                          Rensa och skanna igen
-                        </button>
-
-                        <button
-                          className="action-card action-card-button action-card-primary"
-                          type="button"
-                          onClick={verifyPickup}
-                        >
-                          <div className="action-icon action-icon-scan" />
-                          <h3>Verifiera</h3>
-                          <p>Kontrollera användare och artikel-ID.</p>
-                        </button>
-
-                        {verifyMessage && (
-                          <p style={{ marginTop: "12px", fontWeight: 600 }}>
-                            {verifyMessage}
-                          </p>
-                        )}
-                      </div>
-                    </>
+                    </div>
                   ) : (
-                    <p>Välj först en artikel från listan.</p>
+                    <div className="scan-target">
+                      <h3>Skanna en artikel</h3>
+                      <p>
+                        Testa till exempel QR-koden för <strong>door-12</strong> för
+                        att öppna artikeln direkt.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="scanner-block">
+                    {scannerEnabled && (
+                      <QrScanner
+                        onScan={handleScanResult}
+                        onError={handleScannerError}
+                      />
+                    )}
+
+                    <input
+                      className="form-input"
+                      value={scanInput}
+                      onChange={(event) => setScanInput(event.target.value)}
+                      placeholder="Skriv eller skanna material-ID"
+                    />
+                  </div>
+
+                  <div className="item-actions">
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={resetScanState}
+                    >
+                      Rensa och skanna igen
+                    </button>
+
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={() => {
+                        if (scanMode === "lookup") {
+                          const foundItem = lookupItemByCode(scanInput);
+
+                          if (!foundItem) {
+                            setVerifyMessage("⚠️ Ingen artikel matchade QR-koden.");
+                            return;
+                          }
+
+                          setSelectedId(foundItem.id);
+                          setDetailReturnScreen(
+                            scanReturnScreen === "container"
+                              ? "container"
+                              : "home"
+                          );
+                          setScreen("detail");
+                          return;
+                        }
+
+                        verifyPickup();
+                      }}
+                    >
+                      {scanMode === "lookup" ? "Öppna artikel" : "Verifiera"}
+                    </button>
+                  </div>
+
+                  {verifyMessage && (
+                    <div className="message-box">
+                      <p>{verifyMessage}</p>
+                    </div>
                   )}
                 </article>
               </section>
@@ -531,6 +736,13 @@ function App() {
           {screen === "confirm" && selectedItem && (
             <>
               <section className="hero-panel hero-panel-compact">
+                <button
+                  className="back-link"
+                  type="button"
+                  onClick={() => setScreen("detail")}
+                >
+                  ← Tillbaka
+                </button>
                 <p className="eyebrow">Bekräfta</p>
                 <h1>Bekräfta upphämtning</h1>
                 <p className="lead">
@@ -545,7 +757,7 @@ function App() {
                   <p>Plats: {selectedItem.location}</p>
                   <p>Tilldelad: {selectedItem.assignedUser}</p>
 
-                  <div className="item-actions" style={{ marginTop: "16px" }}>
+                  <div className="item-actions">
                     <button
                       className="primary-button"
                       type="button"
@@ -557,7 +769,7 @@ function App() {
                     <button
                       className="secondary-button"
                       type="button"
-                      onClick={() => setScreen("scan")}
+                      onClick={() => setScreen("detail")}
                     >
                       Avbryt
                     </button>
@@ -582,14 +794,12 @@ function App() {
                   <h3>{selectedItem.name}</h3>
                   <p>Status har uppdaterats till Hämtad.</p>
 
-                  <div className="item-actions" style={{ marginTop: "16px" }}>
+                  <div className="item-actions">
                     <button
                       className="primary-button"
                       type="button"
                       onClick={() => {
-                        setSelectedId(null);
-                        setScanInput("");
-                        setVerifyMessage("");
+                        resetScanState();
                         setScreen("home");
                       }}
                     >
@@ -613,7 +823,10 @@ function App() {
 
           <button
             className={
-              screen === "container" ? "nav-item nav-item-active" : "nav-item"
+              screen === "container" ||
+              (screen === "detail" && detailReturnScreen === "container")
+                ? "nav-item nav-item-active"
+                : "nav-item"
             }
             type="button"
             onClick={() => setScreen("container")}
@@ -628,17 +841,14 @@ function App() {
                 : "nav-item nav-item-center"
             }
             type="button"
-            onClick={() => {
-              const firstOwnReadyItem =
-                items.find(
-                  (item) =>
-                    item.assignedUser === currentUser && item.status !== "Hämtad"
-                ) ?? null;
-
-              if (firstOwnReadyItem) {
-                openScan(firstOwnReadyItem.id);
-              }
-            }}
+            onClick={() =>
+              openLookupScan(
+                screen === "container" ||
+                  (screen === "detail" && detailReturnScreen === "container")
+                  ? "container"
+                  : "home"
+              )
+            }
           >
             Skanna
           </button>

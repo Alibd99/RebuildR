@@ -400,6 +400,117 @@ button {
   border-color: #d0e3d6;
 }
 
+.detail-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.detail-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.detail-row span {
+  color: var(--ink-700);
+}
+
+.detail-row strong {
+  color: var(--ink-900);
+  text-align: right;
+}
+
+.scan-target {
+  display: grid;
+  gap: 6px;
+}
+
+.scanner-block {
+  margin-top: 16px;
+}
+
+.form-input {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 16px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink-900);
+  background: #ffffff;
+}
+
+.form-input::placeholder {
+  color: #819089;
+}
+
+.message-box {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #f6f8f6;
+  border: 1px solid var(--line);
+}
+
+.message-box p {
+  margin: 0;
+  color: var(--ink-900);
+  font-weight: 600;
+}
+
+.message-box-soft {
+  margin-top: 16px;
+  background: #f7fbf8;
+}
+
+.item-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.primary-button,
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 16px;
+  font-weight: 700;
+}
+
+.primary-button {
+  background: var(--green-900);
+  color: #ffffff;
+}
+
+.primary-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.secondary-button {
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--ink-900);
+}
+
 .filter-row {
   display: flex;
   gap: 10px;
@@ -719,19 +830,19 @@ button {
     box-shadow: 0 28px 70px rgba(13, 49, 41, 0.12);
   }
 
-  #qr-reader {
+}
+
+.qr-reader {
   width: 100%;
   overflow: hidden;
   border-radius: 16px;
-  border: 1px solid #dce6dc;
+  border: 1px solid var(--line);
   background: #ffffff;
 }
 
-#qr-reader video {
+.qr-reader video {
   width: 100% !important;
   height: auto !important;
   display: block;
   border-radius: 16px;
-}
-
 }

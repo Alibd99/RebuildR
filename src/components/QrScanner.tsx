@@ -1,81 +1,89 @@
-import { useEffect, useRef } from "react";
-import { Html5Qrcode } from "html5-qrcode";
+import { useEffect, useId, useRef } from "react";
+import type { Html5Qrcode as Html5QrcodeInstance } from "html5-qrcode";
 
 type Props = {
+  active?: boolean;
   onScan: (text: string) => void;
+  onError?: (message: string) => void;
 };
 
-export default function QrScanner({ onScan }: Props) {
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const hasStartedRef = useRef(false);
+export default function QrScanner({
+  active = true,
+  onScan,
+  onError,
+}: Props) {
+  const scannerRef = useRef<Html5QrcodeInstance | null>(null);
   const scannedRef = useRef(false);
+  const readerId = useId().replace(/:/g, "");
 
   useEffect(() => {
-    if (hasStartedRef.current) return;
-    hasStartedRef.current = true;
+    if (!active) return;
 
-    const elementId = "qr-reader";
-    const el = document.getElementById(elementId);
-    if (el) el.innerHTML = "";
+    let isCancelled = false;
 
-    const scanner = new Html5Qrcode(elementId);
-    scannerRef.current = scanner;
-    scannedRef.current = false;
+    const cleanupScanner = async () => {
+      if (!scannerRef.current) return;
+
+      try {
+        await scannerRef.current.stop();
+      } catch {}
+
+      try {
+        await scannerRef.current.clear();
+      } catch {}
+
+      scannerRef.current = null;
+    };
 
     const startScanner = async () => {
       try {
+        const { Html5Qrcode } = await import("html5-qrcode");
+        const scanner = new Html5Qrcode(readerId);
+        scannerRef.current = scanner;
+        scannedRef.current = false;
+
+        const cameras = await Html5Qrcode.getCameras();
+        const preferredCamera =
+          cameras.find((camera) =>
+            camera.label.toLowerCase().includes("back")
+          ) ?? cameras[0];
+
+        const cameraConfig = preferredCamera?.id
+          ? { deviceId: { exact: preferredCamera.id } }
+          : { facingMode: "environment" };
+
         await scanner.start(
-          { facingMode: "environment" },
+          cameraConfig,
           {
             fps: 10,
             qrbox: { width: 220, height: 220 },
           },
           async (decodedText) => {
-            if (scannedRef.current) return;
-            scannedRef.current = true;
+            if (isCancelled || scannedRef.current) return;
 
+            scannedRef.current = true;
             onScan(decodedText);
 
-            try {
-              await scanner.stop();
-            } catch {}
-
-            try {
-              await scanner.clear();
-            } catch {}
+            await cleanupScanner();
           },
           () => {}
         );
       } catch (error) {
-        console.error("Scanner kunde inte starta", error);
+        if (!isCancelled) {
+          onError?.(
+            "Kameran kunde inte starta. Kontrollera behörighet eller testa att ladda om sidan."
+          );
+        }
       }
     };
 
-    startScanner();
+    void startScanner();
 
     return () => {
-      const cleanup = async () => {
-        try {
-          if (scannerRef.current) {
-            try {
-              await scannerRef.current.stop();
-            } catch {}
-
-            try {
-              await scannerRef.current.clear();
-            } catch {}
-          }
-        } finally {
-          scannerRef.current = null;
-          hasStartedRef.current = false;
-          const node = document.getElementById(elementId);
-          if (node) node.innerHTML = "";
-        }
-      };
-
-      cleanup();
+      isCancelled = true;
+      void cleanupScanner();
     };
-  }, [onScan]);
+  }, [active, onError, onScan, readerId]);
 
-  return <div id="qr-reader" />;
+  return <div className="qr-reader" id={readerId} />;
 }
