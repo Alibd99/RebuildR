@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import QrScanner from "./components/QrScanner";
 
 type Screen = "home" | "container" | "scan" | "confirm" | "complete";
 type Filter = "all" | "buy" | "rent";
@@ -28,7 +29,7 @@ const initialItems: Material[] = [
     location: "Container A",
     price: "900 kr / st",
     type: "buy",
-    status: "Redo",
+    status: "Hämtad",
     imageClass: "item-image-a",
     assignedUser: "Ali",
     scanCode: "door-12",
@@ -49,7 +50,7 @@ const initialItems: Material[] = [
   {
     id: "ply-26",
     name: "Plywoodskivor",
-    details: "26 st • Zon B",
+    details: "26 st",
     description: "Plywoodskivor redo för upphämtning.",
     location: "Zon B",
     price: "250 kr / st",
@@ -81,6 +82,7 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scanInput, setScanInput] = useState("");
   const [verifyMessage, setVerifyMessage] = useState("");
+  const [scannerEnabled, setScannerEnabled] = useState(true);
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
@@ -95,10 +97,11 @@ function App() {
   const readyForPickup = items.filter((item) => item.status === "Redo");
 
   const openScan = (itemId: string) => {
-    setSelectedId(itemId);
-    setScanInput("");
-    setVerifyMessage("");
-    setScreen("scan");
+  setSelectedId(itemId);
+  setScanInput("");
+  setVerifyMessage("");
+  setScannerEnabled(true);
+  setScreen("scan");
   };
 
   const verifyPickup = () => {
@@ -460,8 +463,20 @@ function App() {
                       <p>
                         Demo-kod: <strong>{selectedItem.scanCode}</strong>
                       </p>
+                      
 
                       <div style={{ marginTop: "16px" }}>
+                        {scannerEnabled && (
+                          <QrScanner
+                            onScan={(text) => {
+                              console.log(text);
+                              setScanInput(text);
+                              setVerifyMessage("");
+                              setScannerEnabled(false);
+                            }}
+                          />
+                        )}
+
                         <input
                           value={scanInput}
                           onChange={(e) => setScanInput(e.target.value)}
@@ -472,9 +487,21 @@ function App() {
                             padding: "0 12px",
                             borderRadius: "12px",
                             border: "1px solid #dce6dc",
-                            marginBottom: "12px",
+                            marginTop: "16px",
+                            marginBottom: "16px",
                           }}
                         />
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => {
+                            setScanInput("");
+                            setVerifyMessage("");
+                            setScannerEnabled(true);
+                          }}
+                        >
+                          Rensa och skanna igen
+                        </button>
 
                         <button
                           className="action-card action-card-button action-card-primary"

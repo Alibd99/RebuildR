@@ -718,4 +718,20 @@ button {
     overflow: hidden;
     box-shadow: 0 28px 70px rgba(13, 49, 41, 0.12);
   }
+
+  #qr-reader {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid #dce6dc;
+  background: #ffffff;
+}
+
+#qr-reader video {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
+  border-radius: 16px;
+}
+
 }
