@@ -1,11 +1,19 @@
 import { useMemo, useState } from "react";
 import QrScanner from "./components/QrScanner";
 
-type Screen = "home" | "container" | "detail" | "scan" | "confirm" | "complete";
+type Screen =
+  | "home"
+  | "container"
+  | "detail"
+  | "scan"
+  | "confirm"
+  | "complete"
+  | "log";
 type Filter = "all" | "buy" | "rent";
 type ScanMode = "lookup" | "verify";
 type BrowseScreen = "home" | "container";
 type ScanReturnScreen = BrowseScreen | "detail";
+type EventStatus = "info" | "success" | "warning";
 
 type Material = {
   id: string;
@@ -19,6 +27,15 @@ type Material = {
   imageClass: string;
   assignedUser: string;
   scanCode: string;
+};
+
+type EventLogItem = {
+  id: string;
+  time: string;
+  title: string;
+  description: string;
+  status: EventStatus;
+  materialName?: string;
 };
 
 const currentUser = "Ali";
@@ -80,6 +97,12 @@ const initialItems: Material[] = [
 
 const normalizeCode = (value: string) => value.trim().toLowerCase();
 
+const createTimeLabel = () =>
+  new Date().toLocaleTimeString("sv-SE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [filter, setFilter] = useState<Filter>("all");
@@ -89,6 +112,7 @@ function App() {
   const [verifyMessage, setVerifyMessage] = useState("");
   const [scannerEnabled, setScannerEnabled] = useState(true);
   const [scanMode, setScanMode] = useState<ScanMode>("lookup");
+  const [eventLog, setEventLog] = useState<EventLogItem[]>([]);
   const [detailReturnScreen, setDetailReturnScreen] =
     useState<BrowseScreen>("home");
   const [scanReturnScreen, setScanReturnScreen] =
@@ -122,6 +146,30 @@ function App() {
   );
 
   const ownReadyCount = readyForPickup.length;
+
+  const addEventLogItem = ({
+    title,
+    description,
+    status = "info",
+    materialName,
+  }: {
+    title: string;
+    description: string;
+    status?: EventStatus;
+    materialName?: string;
+  }) => {
+    setEventLog((prev) => [
+      {
+        id: `${Date.now()}-${prev.length}`,
+        time: createTimeLabel(),
+        title,
+        description,
+        status,
+        materialName,
+      },
+      ...prev,
+    ]);
+  };
 
   const resetScanState = () => {
     setScanInput("");
@@ -165,6 +213,11 @@ function App() {
 
     if (!targetItem) {
       setVerifyMessage("⚠️ Ingen artikel matchade QR-koden.");
+      addEventLogItem({
+        title: "Okänd QR-kod",
+        description: `Koden ${codeValue || "saknas"} matchade ingen artikel.`,
+        status: "warning",
+      });
       return false;
     }
 
@@ -172,16 +225,34 @@ function App() {
 
     if (targetItem.assignedUser !== currentUser) {
       setVerifyMessage("❌ Fel användare – materialet är inte tilldelat dig.");
+      addEventLogItem({
+        title: "Upphämtning nekad",
+        description: `${targetItem.name} är tilldelad ${targetItem.assignedUser}.`,
+        status: "warning",
+        materialName: targetItem.name,
+      });
       return false;
     }
 
     if (targetItem.status === "Kontroll") {
       setVerifyMessage("⚠️ Materialet väntar fortfarande på kontroll.");
+      addEventLogItem({
+        title: "Upphämtning stoppad",
+        description: `${targetItem.name} väntar fortfarande på kontroll.`,
+        status: "warning",
+        materialName: targetItem.name,
+      });
       return false;
     }
 
     if (targetItem.status === "Hämtad") {
       setVerifyMessage("ℹ️ Materialet är redan markerat som hämtat.");
+      addEventLogItem({
+        title: "Redan upphämtad",
+        description: `${targetItem.name} är redan markerad som hämtad.`,
+        status: "info",
+        materialName: targetItem.name,
+      });
       return false;
     }
 
@@ -191,9 +262,21 @@ function App() {
       setVerifyMessage(
         "⚠️ Fel materialkod – kontrollera att du har rätt artikel."
       );
+      addEventLogItem({
+        title: "Fel QR-kod",
+        description: `Koden matchade inte ${targetItem.name}.`,
+        status: "warning",
+        materialName: targetItem.name,
+      });
       return false;
     }
 
+    addEventLogItem({
+      title: "Verifiering godkänd",
+      description: `${targetItem.name} verifierades för ${currentUser}.`,
+      status: "success",
+      materialName: targetItem.name,
+    });
     setVerifyMessage("");
     setScreen("confirm");
     return true;
@@ -209,9 +292,20 @@ function App() {
 
       if (!foundItem) {
         setVerifyMessage("⚠️ Ingen artikel matchade QR-koden.");
+        addEventLogItem({
+          title: "Okänd QR-kod",
+          description: `Koden ${text} matchade ingen artikel.`,
+          status: "warning",
+        });
         return;
       }
 
+      addEventLogItem({
+        title: "Artikel öppnad via QR",
+        description: `${foundItem.name} öppnades från QR-skanning.`,
+        status: "info",
+        materialName: foundItem.name,
+      });
       setSelectedId(foundItem.id);
       setDetailReturnScreen(
         scanReturnScreen === "container" ? "container" : "home"
@@ -225,6 +319,11 @@ function App() {
 
   const handleScannerError = (message: string) => {
     setVerifyMessage(`⚠️ ${message}`);
+    addEventLogItem({
+      title: "Kamera kunde inte starta",
+      description: message,
+      status: "warning",
+    });
     setScannerEnabled(false);
   };
 
@@ -237,6 +336,12 @@ function App() {
       )
     );
 
+    addEventLogItem({
+      title: "Upphämtning registrerad",
+      description: `${selectedItem.name} markerades som hämtad av ${currentUser}.`,
+      status: "success",
+      materialName: selectedItem.name,
+    });
     setScreen("complete");
   };
 
@@ -343,7 +448,11 @@ function App() {
                     <p>Se allt som finns tillgängligt på platsen just nu.</p>
                   </button>
 
-                  <button className="action-card action-card-button" type="button">
+                  <button
+                    className="action-card action-card-button"
+                    type="button"
+                    onClick={() => setScreen("log")}
+                  >
                     <div className="action-icon action-icon-log" />
                     <h3>Händelselogg</h3>
                     <p>Öppna senaste in- och utcheckningar.</p>
@@ -703,9 +812,20 @@ function App() {
 
                           if (!foundItem) {
                             setVerifyMessage("⚠️ Ingen artikel matchade QR-koden.");
+                            addEventLogItem({
+                              title: "Okänd QR-kod",
+                              description: `Koden ${scanInput || "saknas"} matchade ingen artikel.`,
+                              status: "warning",
+                            });
                             return;
                           }
 
+                          addEventLogItem({
+                            title: "Artikel öppnad via QR",
+                            description: `${foundItem.name} öppnades från manuell QR-kod.`,
+                            status: "info",
+                            materialName: foundItem.name,
+                          });
                           setSelectedId(foundItem.id);
                           setDetailReturnScreen(
                             scanReturnScreen === "container"
@@ -807,6 +927,65 @@ function App() {
                     </button>
                   </div>
                 </article>
+              </section>
+            </>
+          )}
+
+          {screen === "log" && (
+            <>
+              <section className="hero-panel hero-panel-compact">
+                <button
+                  className="back-link"
+                  type="button"
+                  onClick={() => setScreen("home")}
+                >
+                  ← Tillbaka
+                </button>
+                <p className="eyebrow">Container A</p>
+                <h1>Händelselogg</h1>
+                <p className="lead">
+                  Senaste händelserna från skanning, verifiering och
+                  upphämtning.
+                </p>
+              </section>
+
+              <section className="section">
+                <article className="card card-accent">
+                  <h3>{eventLog.length} händelser</h3>
+                  <p>Loggen sparas lokalt i prototypen under sessionen.</p>
+                </article>
+              </section>
+
+              <section className="section section-tight">
+                {eventLog.length > 0 ? (
+                  <div className="event-list">
+                    {eventLog.map((event) => (
+                      <article className="event-row" key={event.id}>
+                        <span
+                          className={`event-dot event-dot-${event.status}`}
+                        />
+                        <div className="event-content">
+                          <div className="event-top">
+                            <h3>{event.title}</h3>
+                            <span>{event.time}</span>
+                          </div>
+                          <p>{event.description}</p>
+                          {event.materialName && (
+                            <strong>{event.materialName}</strong>
+                          )}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <article className="card">
+                    <h3>Inga händelser än</h3>
+                    <p>
+                      Loggen fylls på när någon skannar, verifierar eller
+                      bekräftar en upphämtning.
+                    </p>
+                  </article>
+                )}
               </section>
             </>
           )}
