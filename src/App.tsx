@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import QrScanner from "./components/QrScanner";
+import { supabase } from "./lib/supabaseClient";
 
 type Screen =
   | "home"
@@ -40,61 +41,6 @@ type EventLogItem = {
 
 const currentUser = "Ali";
 
-const initialItems: Material[] = [
-  {
-    id: "door-12",
-    name: "Innerdörrar",
-    details: "12 st • Gott skick",
-    description: "Begagnade innerdörrar i gott skick.",
-    location: "Container A",
-    price: "900 kr / st",
-    type: "buy",
-    status: "Redo",
-    imageClass: "item-image-a",
-    assignedUser: "Ali",
-    scanCode: "door-12",
-  },
-  {
-    id: "rail-8",
-    name: "Skyddsräcken",
-    details: "8 st • Returneras till container",
-    description: "Skyddsräcken för tillfällig användning.",
-    location: "Container A",
-    price: "45 kr / dag",
-    type: "rent",
-    status: "Uthyrbar",
-    imageClass: "item-image-b",
-    assignedUser: "Axel",
-    scanCode: "rail-8",
-  },
-  {
-    id: "ply-26",
-    name: "Plywoodskivor",
-    details: "26 st",
-    description: "Plywoodskivor redo för upphämtning.",
-    location: "Zon B",
-    price: "250 kr / st",
-    type: "buy",
-    status: "Redo",
-    imageClass: "item-image-c",
-    assignedUser: "Ali",
-    scanCode: "ply-26",
-  },
-  {
-    id: "el-4",
-    name: "Elcentraler",
-    details: "4 st • Kräver kontroll",
-    description: "Elcentraler som väntar på kontroll.",
-    location: "Container A",
-    price: "Väntar på kontroll",
-    type: "rent",
-    status: "Kontroll",
-    imageClass: "item-image-d",
-    assignedUser: "Ali",
-    scanCode: "el-4",
-  },
-];
-
 const normalizeCode = (value: string) => value.trim().toLowerCase();
 
 const createTimeLabel = () =>
@@ -106,7 +52,7 @@ const createTimeLabel = () =>
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [filter, setFilter] = useState<Filter>("all");
-  const [items, setItems] = useState<Material[]>(initialItems);
+  const [items, setItems] = useState<Material[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scanInput, setScanInput] = useState("");
   const [verifyMessage, setVerifyMessage] = useState("");
@@ -117,6 +63,45 @@ function App() {
     useState<BrowseScreen>("home");
   const [scanReturnScreen, setScanReturnScreen] =
     useState<ScanReturnScreen>("home");
+
+
+  useEffect( () => {
+    const fetchMaterials = async () => {
+      const {data, error} = await supabase
+        .from("materials")
+        .select("*");
+        
+      if(error) {
+        console.error("Error fetching materials: ", error);
+        return;
+      }
+
+      const mappedData: Material[] = data.map((col: any) => {
+        const imageUrl = supabase
+          .storage
+          .from("images")
+          .getPublicUrl(col.image_class).data.publicUrl;
+
+        return {
+          id: col.id,
+          name: col.name,
+          details: col.details,
+          description: col.description,
+          location: col.location,
+          price: col.price,
+          type: col.type,
+          status: col.status,
+          imageClass: imageUrl,
+          assignedUser: col.assigned_user,
+          scanCode: col.scan_code,
+        };
+      });
+
+      setItems(mappedData);
+    };
+
+    fetchMaterials();
+  }, []);
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
@@ -470,7 +455,11 @@ function App() {
                     {readyForPickup.map((item) => (
                       <article className="item-card" key={item.id}>
                         <div className="item-card-top">
-                          <div className={`item-image ${item.imageClass}`} />
+                          <img
+                            src={item.imageClass}
+                            alt={item.name}
+                            className="item-image"
+                          />
                           <span className="item-tag">Redo</span>
                         </div>
 
@@ -514,7 +503,11 @@ function App() {
                   {items.slice(0, 2).map((item) => (
                     <article className="item-card" key={item.id}>
                       <div className="item-card-top">
-                        <div className={`item-image ${item.imageClass}`} />
+                        <img
+                          src={item.imageClass}
+                          alt={item.name}
+                          className="item-image"
+                        />
                         <span
                           className={
                             item.type === "rent"
@@ -608,7 +601,11 @@ function App() {
                 <div className="container-list">
                   {filteredItems.map((item) => (
                     <article className="container-row" key={item.id}>
-                      <div className={`item-image ${item.imageClass}`} />
+                      <img
+                        src={item.imageClass}
+                        alt={item.name}
+                        className="item-image"
+                      />
                       <div className="container-row-content">
                         <div className="container-row-top">
                           <h3>{item.name}</h3>
