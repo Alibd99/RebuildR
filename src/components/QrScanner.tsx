@@ -14,35 +14,62 @@ export default function QrScanner({
 }: Props) {
   const scannerRef = useRef<Html5QrcodeInstance | null>(null);
   const scannedRef = useRef(false);
+  const onScanRef = useRef(onScan);
+  const onErrorRef = useRef(onError);
   const readerId = useId().replace(/:/g, "");
+
+  useEffect(() => {
+    onScanRef.current = onScan;
+  }, [onScan]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
 
   useEffect(() => {
     if (!active) return;
 
     let isCancelled = false;
 
+    const clearReaderElement = () => {
+      document.getElementById(readerId)?.replaceChildren();
+    };
+
     const cleanupScanner = async () => {
-      if (!scannerRef.current) return;
-
-      try {
-        await scannerRef.current.stop();
-      } catch {}
-
-      try {
-        await scannerRef.current.clear();
-      } catch {}
-
+      const scanner = scannerRef.current;
       scannerRef.current = null;
+
+      if (scanner) {
+        try {
+          await scanner.stop();
+        } catch {}
+
+        try {
+          await scanner.clear();
+        } catch {}
+      }
+
+      clearReaderElement();
     };
 
     const startScanner = async () => {
       try {
+        await cleanupScanner();
+        clearReaderElement();
+
         const { Html5Qrcode } = await import("html5-qrcode");
+        if (isCancelled) return;
+
         const scanner = new Html5Qrcode(readerId);
         scannerRef.current = scanner;
         scannedRef.current = false;
 
         const cameras = await Html5Qrcode.getCameras();
+        if (isCancelled) {
+          await cleanupScanner();
+          return;
+        }
+
         const preferredCamera =
           cameras.find((camera) =>
             camera.label.toLowerCase().includes("back")
@@ -62,15 +89,19 @@ export default function QrScanner({
             if (isCancelled || scannedRef.current) return;
 
             scannedRef.current = true;
-            onScan(decodedText);
+            onScanRef.current(decodedText);
 
             await cleanupScanner();
           },
           () => {}
         );
+
+        if (isCancelled) {
+          await cleanupScanner();
+        }
       } catch (error) {
         if (!isCancelled) {
-          onError?.(
+          onErrorRef.current?.(
             "Kameran kunde inte starta. Kontrollera behörighet eller testa att ladda om sidan."
           );
         }
@@ -83,7 +114,7 @@ export default function QrScanner({
       isCancelled = true;
       void cleanupScanner();
     };
-  }, [active, onError, onScan, readerId]);
+  }, [active, readerId]);
 
   return <div className="qr-reader" id={readerId} />;
 }

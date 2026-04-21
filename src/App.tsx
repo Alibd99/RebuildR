@@ -404,7 +404,7 @@ function App() {
 
                 <div className="action-grid">
                   <button
-                    className="action-card action-card-button action-card-primary"
+                    className="action-card action-card-button"
                     type="button"
                     onClick={() => setScreen("container")}
                   >
