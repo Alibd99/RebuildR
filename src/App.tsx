@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import QrScanner from "./components/QrScanner";
 import { supabase } from "./lib/supabaseClient";
 
@@ -15,6 +15,7 @@ type ScanMode = "lookup" | "verify";
 type BrowseScreen = "home" | "container";
 type ScanReturnScreen = BrowseScreen | "detail";
 type EventStatus = "info" | "success" | "warning";
+type MaterialStatus = "Redo" | "Uthyrbar" | "Hämtad" | "Kontroll";
 
 type Material = {
   id: string;
@@ -24,7 +25,7 @@ type Material = {
   location: string;
   price: string;
   type: "buy" | "rent";
-  status: "Redo" | "Uthyrbar" | "Hämtad" | "Kontroll";
+  status: MaterialStatus;
   imageClass: string;
   assignedUser: string;
   scanCode: string;
@@ -59,49 +60,56 @@ function App() {
   const [scannerEnabled, setScannerEnabled] = useState(true);
   const [scanMode, setScanMode] = useState<ScanMode>("lookup");
   const [eventLog, setEventLog] = useState<EventLogItem[]>([]);
+  const [isLoadingMaterials, setIsLoadingMaterials] = useState(true);
+  const [materialError, setMaterialError] = useState("");
+  const [isSavingPickup, setIsSavingPickup] = useState(false);
+  const [pickupError, setPickupError] = useState("");
   const [detailReturnScreen, setDetailReturnScreen] =
     useState<BrowseScreen>("home");
   const [scanReturnScreen, setScanReturnScreen] =
     useState<ScanReturnScreen>("home");
 
+  const fetchMaterials = useCallback(async () => {
+    setIsLoadingMaterials(true);
+    setMaterialError("");
 
-  useEffect( () => {
-    const fetchMaterials = async () => {
-      const {data, error} = await supabase
-        .from("materials")
-        .select("*");
-        
-      if(error) {
-        console.error("Error fetching materials: ", error);
-        return;
-      }
+    const { data, error } = await supabase.from("materials").select("*");
 
-      const mappedData: Material[] = data.map((col: any) => {
-        const imageUrl = supabase
-          .storage
-          .from("images")
-          .getPublicUrl(col.image_class).data.publicUrl;
+    if (error) {
+      console.error("Error fetching materials: ", error);
+      setMaterialError("Kunde inte hämta material från databasen.");
+      setIsLoadingMaterials(false);
+      return;
+    }
 
-        return {
-          id: col.id,
-          name: col.name,
-          details: col.details,
-          description: col.description,
-          location: col.location,
-          price: col.price,
-          type: col.type,
-          status: col.status,
-          imageClass: imageUrl,
-          assignedUser: col.assigned_user,
-          scanCode: col.scan_code,
-        };
-      });
+    const mappedData: Material[] = data.map((col) => {
+      const imagePath = col.image_class ?? "";
+      const imageUrl = imagePath
+        ? supabase.storage.from("images").getPublicUrl(imagePath).data.publicUrl
+        : "";
 
-      setItems(mappedData);
-    };
+      return {
+        id: col.id,
+        name: col.name,
+        details: col.details ?? "",
+        description: col.description ?? "",
+        location: col.location ?? "",
+        price: col.price ?? "",
+        type: col.type ?? "buy",
+        status: (col.status ?? "Kontroll") as MaterialStatus,
+        imageClass: imageUrl,
+        assignedUser: col.assigned_user ?? "",
+        scanCode: col.scan_code ?? "",
+      };
+    });
 
-    fetchMaterials();
+    setItems(mappedData);
+    setIsLoadingMaterials(false);
   }, []);
+
+  useEffect(() => {
+    fetchMaterials();
+  }, [fetchMaterials]);
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
@@ -159,6 +167,7 @@ function App() {
   const resetScanState = () => {
     setScanInput("");
     setVerifyMessage("");
+    setPickupError("");
     setScannerEnabled(true);
   };
 
@@ -312,12 +321,38 @@ function App() {
     setScannerEnabled(false);
   };
 
-  const confirmPickup = () => {
+  const confirmPickup = async () => {
     if (!selectedItem) return;
+
+    setIsSavingPickup(true);
+    setPickupError("");
+
+    const nextStatus: MaterialStatus = "Hämtad";
+    const { data: updatedMaterial, error } = await supabase
+      .from("materials")
+      .update({ status: nextStatus as never })
+      .eq("id", selectedItem.id)
+      .select("id, status")
+      .maybeSingle();
+
+    if (error || String(updatedMaterial?.status ?? "") !== nextStatus) {
+      console.error("Error updating material status: ", error);
+      setPickupError("Kunde inte spara upphämtningen i databasen.");
+      addEventLogItem({
+        title: "Upphämtning kunde inte sparas",
+        description:
+          error?.message ??
+          `${selectedItem.name} uppdaterades inte i databasen.`,
+        status: "warning",
+        materialName: selectedItem.name,
+      });
+      setIsSavingPickup(false);
+      return;
+    }
 
     setItems((prev) =>
       prev.map((item) =>
-        item.id === selectedItem.id ? { ...item, status: "Hämtad" } : item
+        item.id === selectedItem.id ? { ...item, status: nextStatus } : item
       )
     );
 
@@ -327,6 +362,7 @@ function App() {
       status: "success",
       materialName: selectedItem.name,
     });
+    setIsSavingPickup(false);
     setScreen("complete");
   };
 
@@ -396,6 +432,32 @@ function App() {
                   <p>{ownReadyCount} artiklar redo för upphämtning</p>
                 </article>
               </section>
+
+              {(isLoadingMaterials || materialError) && (
+                <section className="section">
+                  <article className="card">
+                    <h3>
+                      {isLoadingMaterials ? "Hämtar material" : "Databasfel"}
+                    </h3>
+                    <p>
+                      {isLoadingMaterials
+                        ? "Materiallistan laddas från Supabase."
+                        : materialError}
+                    </p>
+                    {materialError && (
+                      <div className="item-actions">
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={fetchMaterials}
+                        >
+                          Försök igen
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                </section>
+              )}
 
               <section className="section">
                 <div className="section-heading">
@@ -598,56 +660,85 @@ function App() {
               </section>
 
               <section className="section section-tight">
-                <div className="container-list">
-                  {filteredItems.map((item) => (
-                    <article className="container-row" key={item.id}>
-                      <img
-                        src={item.imageClass}
-                        alt={item.name}
-                        className="item-image"
-                      />
-                      <div className="container-row-content">
-                        <div className="container-row-top">
-                          <h3>{item.name}</h3>
-                          <span
-                            className={
-                              item.type === "rent"
-                                ? "item-tag item-tag-rental"
-                                : "item-tag"
-                            }
-                          >
-                            {item.type === "rent" ? "Hyra" : "Köp"}
-                          </span>
-                        </div>
-
-                        <p>{item.details}</p>
-
-                        <div className="container-row-bottom">
-                          <strong>{item.price}</strong>
-                          <span
-                            className={
-                              item.status === "Kontroll"
-                                ? "status-pill status-pill-soft"
-                                : "status-pill"
-                            }
-                          >
-                            {item.status}
-                          </span>
-                        </div>
-
-                        <div className="inline-actions">
-                          <button
-                            className="text-link"
-                            type="button"
-                            onClick={() => openDetail(item.id, "container")}
-                          >
-                            Visa detalj
-                          </button>
-                        </div>
+                {isLoadingMaterials || materialError ? (
+                  <article className="card">
+                    <h3>
+                      {isLoadingMaterials ? "Hämtar material" : "Databasfel"}
+                    </h3>
+                    <p>
+                      {isLoadingMaterials
+                        ? "Containerinnehållet laddas från Supabase."
+                        : materialError}
+                    </p>
+                    {materialError && (
+                      <div className="item-actions">
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={fetchMaterials}
+                        >
+                          Försök igen
+                        </button>
                       </div>
-                    </article>
-                  ))}
-                </div>
+                    )}
+                  </article>
+                ) : filteredItems.length > 0 ? (
+                  <div className="container-list">
+                    {filteredItems.map((item) => (
+                      <article className="container-row" key={item.id}>
+                        <img
+                          src={item.imageClass}
+                          alt={item.name}
+                          className="item-image"
+                        />
+                        <div className="container-row-content">
+                          <div className="container-row-top">
+                            <h3>{item.name}</h3>
+                            <span
+                              className={
+                                item.type === "rent"
+                                  ? "item-tag item-tag-rental"
+                                  : "item-tag"
+                              }
+                            >
+                              {item.type === "rent" ? "Hyra" : "Köp"}
+                            </span>
+                          </div>
+
+                          <p>{item.details}</p>
+
+                          <div className="container-row-bottom">
+                            <strong>{item.price}</strong>
+                            <span
+                              className={
+                                item.status === "Kontroll"
+                                  ? "status-pill status-pill-soft"
+                                  : "status-pill"
+                              }
+                            >
+                              {item.status}
+                            </span>
+                          </div>
+
+                          <div className="inline-actions">
+                            <button
+                              className="text-link"
+                              type="button"
+                              onClick={() => openDetail(item.id, "container")}
+                            >
+                              Visa detalj
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <article className="card">
+                    <h3>Inget material hittades</h3>
+                    <p>Det finns inga artiklar som matchar filtret.</p>
+                  </article>
+                )}
               </section>
             </>
           )}
@@ -879,18 +970,29 @@ function App() {
                       className="primary-button"
                       type="button"
                       onClick={confirmPickup}
+                      disabled={isSavingPickup}
                     >
-                      Bekräfta upphämtning
+                      {isSavingPickup ? "Sparar..." : "Bekräfta upphämtning"}
                     </button>
 
                     <button
                       className="secondary-button"
                       type="button"
-                      onClick={() => setScreen("detail")}
+                      onClick={() => {
+                        setPickupError("");
+                        setScreen("detail");
+                      }}
+                      disabled={isSavingPickup}
                     >
                       Avbryt
                     </button>
                   </div>
+
+                  {pickupError && (
+                    <div className="message-box">
+                      <p>{pickupError}</p>
+                    </div>
+                  )}
                 </article>
               </section>
             </>

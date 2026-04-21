@@ -500,7 +500,8 @@ button {
   color: #ffffff;
 }
 
-.primary-button:disabled {
+.primary-button:disabled,
+.secondary-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
