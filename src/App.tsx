@@ -50,6 +50,18 @@ const createTimeLabel = () =>
     minute: "2-digit",
   });
 
+  type Container = {
+  id: string;
+  name: string;
+  mode: "pickup" | "transport";
+};
+
+  const containers: Container[] = [
+    { id: "A", name: "Container A", mode: "pickup" },
+    { id: "B", name: "Container B", mode: "pickup" },
+    { id: "C", name: "Container C", mode: "transport" },
+];
+
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [filter, setFilter] = useState<Filter>("all");
@@ -64,14 +76,31 @@ function App() {
   const [materialError, setMaterialError] = useState("");
   const [isSavingPickup, setIsSavingPickup] = useState(false);
   const [pickupError, setPickupError] = useState("");
+  const [bluetoothConnected, setBluetoothConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [detailReturnScreen, setDetailReturnScreen] =
     useState<BrowseScreen>("home");
   const [scanReturnScreen, setScanReturnScreen] =
     useState<ScanReturnScreen>("home");
 
-  const fetchMaterials = useCallback(async () => {
-    setIsLoadingMaterials(true);
-    setMaterialError("");
+    const [selectedContainerId, setSelectedContainerId] = useState("A");
+
+    const [bluetoothStatus, setBluetoothStatus] = useState<
+    "idle" | "connecting" | "connected" | "unlocked" | "denied"
+    >("idle");
+
+    const [bluetoothMessage, setBluetoothMessage] = useState("");
+
+    const currentContainer = containers.find(
+      (c) => c.id === selectedContainerId
+    );
+
+    const containerName = currentContainer?.name ?? "containerName";
+
+    
+    const fetchMaterials = useCallback(async () => {
+      setIsLoadingMaterials(true);
+      setMaterialError("");
 
     const { data, error } = await supabase.from("materials").select("*");
 
@@ -116,18 +145,29 @@ function App() {
     [items, selectedId]
   );
 
+  const selectedItemContainer = containers.find(
+      (c) => c.name === selectedItem?.location
+    );
+
+
   const filteredItems = useMemo(
-    () =>
-      items.filter((item) => {
-        if (filter === "all") return true;
-        return item.type === filter;
+  () =>
+    items.filter((item) => {
+      const matchesFilter = filter === "all" ? true : item.type === filter;
+      const matchesContainer = item.location === containerName;
+      return matchesFilter && matchesContainer;
       }),
-    [items, filter]
+    [items, filter, containerName]
   );
 
   const userItems = useMemo(
-    () => items.filter((item) => item.assignedUser === currentUser),
-    [items]
+  () =>
+    items.filter(
+      (item) =>
+        item.assignedUser === currentUser &&
+        item.location === containerName
+    ),
+  [items, containerName]
   );
 
   const readyForPickup = useMemo(
@@ -203,6 +243,13 @@ function App() {
     codeValue: string = scanInput,
     itemOverride?: Material | null
   ) => {
+
+    if (selectedItemContainer?.mode === "transport") {
+      setVerifyMessage(
+        "Denna container transporteras till hub – ingen upphämtning."
+      );
+      return false;
+    }
     const targetItem = itemOverride ?? selectedItem ?? lookupItemByCode(codeValue);
 
     if (!targetItem) {
@@ -388,9 +435,55 @@ function App() {
   })();
 
   const detailActionEnabled =
+    selectedItemContainer?.mode === "pickup" &&
     selectedItem?.assignedUser === currentUser &&
     selectedItem?.status !== "Hämtad" &&
     selectedItem?.status !== "Kontroll";
+
+  const handleBluetoothAccess = () => {
+    if (!currentContainer) return;
+
+    setBluetoothStatus("connecting");
+    setBluetoothMessage(`Ansluter till ${containerName} via Bluetooth...`);
+
+    setTimeout(() => {
+      if (currentContainer.mode === "transport") {
+        setBluetoothConnected(false);
+        setIsConnecting(false);
+        setBluetoothStatus("denied");
+        setBluetoothMessage(
+          "Åtkomst nekad. Denna container är markerad för transport till hub."
+        );
+        return;
+      }
+
+      const hasAccess = items.some(
+        (item) =>
+          item.assignedUser === currentUser &&
+          item.location === containerName &&
+          (item.status === "Redo" || item.status === "Uthyrbar")
+      );
+
+      if (!hasAccess) {
+        setBluetoothConnected(false);
+        setIsConnecting(false);
+        setBluetoothStatus("denied");
+        setBluetoothMessage(
+          "Åtkomst nekad. Du har inga material redo för upphämtning i denna container."
+        );
+        return;
+      }
+      setBluetoothConnected(true);
+      setIsConnecting(false);
+      setBluetoothStatus("connected");
+      setBluetoothMessage(`Bluetooth ansluten till ${containerName}.`);
+
+      setTimeout(() => {
+        setBluetoothStatus("unlocked");
+        setBluetoothMessage(`${containerName} är nu öppnad.`);
+      }, 1000);
+    }, 1200);
+  };
 
   return (
     <main className="app-shell">
@@ -425,13 +518,91 @@ function App() {
 
                 <article className="site-summary">
                   <div className="site-summary-row">
-                    <span>Container A</span>
+                    <span>{containerName}</span>
                     <span>Öppen nu</span>
                   </div>
+
                   <strong>Inloggad: {currentUser}</strong>
-                  <p>{ownReadyCount} artiklar redo för upphämtning</p>
+
+                <div className= "badge-row">
+                    <div
+                    className={
+                    currentContainer?.mode === "pickup"
+                      ? "mode-badge mode-badge-pickup"
+                      : "mode-badge mode-badge-transport"
+                  }
+                >
+                  {currentContainer?.mode === "pickup"
+                    ? "📦 Upphämtning"
+                    : "🚚 Hubtransport"}
+                </div>
+
+                <div
+                  className={
+                    bluetoothStatus === "connected" || bluetoothStatus === "unlocked"
+                      ? "bluetooth-badge bluetooth-connected"
+                      : bluetoothStatus === "denied"
+                      ? "bluetooth-badge bluetooth-denied"
+                      : "bluetooth-badge bluetooth-disconnected"
+                  }
+                >
+                  {bluetoothStatus === "connected" || bluetoothStatus === "unlocked"
+                    ? "Bluetooth ansluten"
+                    : bluetoothStatus === "denied"
+                    ? "Åtkomst nekad"
+                    : bluetoothStatus === "connecting"
+                    ? "Ansluter..."
+                    : "Ej ansluten"}
+                </div>
+              </div>
+
+                  <p>
+                    {currentContainer?.mode === "pickup"
+                      ? ownReadyCount > 0
+                        ? `${ownReadyCount} artiklar redo för upphämtning`
+                        : "Inga artiklar redo för upphämtning just nu"
+                      : "Containern väntar på transport till hub"}
+                  </p>
+                  <div className="item-action" style={{ marginTop: "12px" }}>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={handleBluetoothAccess}
+                    disabled={isConnecting}
+                  >
+                    {isConnecting ? "Ansluter..." : "Anslut till container via Bluetooth"}
+                      </button> 
+                  </div>
+
+                    {bluetoothMessage && (
+                      <div className="message-box" style={{ marginTop: "12px" }}>
+                        <p> {bluetoothMessage} </p>
+                      </div>
+                      )}
                 </article>
-              </section>
+
+                <div className="filter-row" style={{ marginTop: "16px" }}>
+                  {containers.map((c) => (
+                    <button
+                      key={c.id}
+                      className={
+                        selectedContainerId === c.id
+                          ? "filter-pill filter-pill-active"
+                          : "filter-pill"
+                  }
+                  onClick={() => {
+                    setSelectedContainerId(c.id);
+                    setSelectedId(null);
+                    setBluetoothStatus("idle");
+                    setBluetoothMessage("");
+                  }}
+                  >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </section>
+              
 
               {(isLoadingMaterials || materialError) && (
                 <section className="section">
@@ -562,7 +733,7 @@ function App() {
                 </div>
 
                 <div className="item-list">
-                  {items.slice(0, 2).map((item) => (
+                  {filteredItems.slice(0, 2).map((item) => (
                     <article className="item-card" key={item.id}>
                       <div className="item-card-top">
                         <img
@@ -613,7 +784,7 @@ function App() {
                 <p className="eyebrow">Rosendal Etapp 2</p>
                 <h1>Containerinnehåll</h1>
                 <p className="lead">
-                  Container A • Det som finns tillgängligt på plats just nu.
+                  {containerName} • Det som finns tillgängligt på plats just nu.
                 </p>
               </section>
 
@@ -790,6 +961,12 @@ function App() {
                   <div className="message-box message-box-soft">
                     {currentDetailMessage}
                   </div>
+
+                  {selectedItemContainer?.mode === "transport" && (
+                    <div className="message-box">
+                      Denna container transporteras till hub. Ingen individuell upphämtning.
+                    </div>
+                  )}
 
                   <div className="item-actions">
                     <button
@@ -1040,7 +1217,7 @@ function App() {
                 >
                   ← Tillbaka
                 </button>
-                <p className="eyebrow">Container A</p>
+                <p className="eyebrow">{containerName}</p>
                 <h1>Händelselogg</h1>
                 <p className="lead">
                   Senaste händelserna från skanning, verifiering och
