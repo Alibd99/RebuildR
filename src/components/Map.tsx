@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import Map, { Marker, NavigationControl, Popup } from "@vis.gl/react-maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { supabase } from "../lib/supabaseClient";
+import "./mapStyle.css";
 
 type Container = {
   id: number;
@@ -11,10 +12,20 @@ type Container = {
   latitude: number | null;
 };
 
+type Material = {
+  id: string;
+  name: string;
+  price: string | null;
+  image_class: string | null;
+  location: string | null;
+};
+
 export default function IntMap() {
   const [containers, setContainers] = useState<Container[]>([]);
   const [selected, setSelected] = useState<Container | null>(null);
+  const [materials, setMaterials] = useState<Material[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMaterials, setIsLoadingMaterials] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
@@ -40,6 +51,37 @@ export default function IntMap() {
 
     fetchContainers();
   }, []);
+
+  const fetchMaterialsForContainer = async (containerName: string) => {
+    setIsLoadingMaterials(true);
+
+    const { data, error } = await supabase
+      .from("materials")
+      .select("id, name, price, image_class, location")
+      .eq("location", containerName);
+
+    if (error) {
+      console.error("Error fetching materials:", error);
+      setMaterials([]);
+      setIsLoadingMaterials(false);
+      return;
+    }
+
+    const mappedMaterials = (data ?? []).map((material) => {
+      const imageUrl = material.image_class
+        ? supabase.storage.from("images").getPublicUrl(material.image_class).data
+            .publicUrl
+        : null;
+
+      return {
+        ...material,
+        image_class: imageUrl,
+      };
+    });
+
+    setMaterials(mappedMaterials);
+    setIsLoadingMaterials(false);
+  };
 
   const mappedContainers = useMemo(
     () =>
@@ -77,7 +119,7 @@ export default function IntMap() {
   }
 
   return (
-    <div style={{ width: "100%", height: "500px" }}>
+    <div className="map-shell">
       <Map
         initialViewState={initialViewState}
         style={{ width: "100%", height: "100%" }}
@@ -91,43 +133,26 @@ export default function IntMap() {
             longitude={container.longitude}
             latitude={container.latitude}
             anchor="bottom"
-            onClick={(event) => {
+            onClick={async (event) => {
               event.originalEvent.stopPropagation();
-              setSelected((current) =>
-                current?.id === container.id ? null : container
-              );
+
+              if (selected?.id === container.id) {
+                setSelected(null);
+                setMaterials([]);
+                return;
+              }
+
+              setSelected(container);
+              await fetchMaterialsForContainer(container.name);
             }}
           >
             <button
               type="button"
-              style={{
-                padding: 0,
-                background: "none",
-                border: "none",
-              }}
+              className="map-marker-button"
               aria-label={container.name}
             >
-              <div
-                style={{
-                  width: "20px",
-                  height: "20px",
-                  backgroundColor: "#18a0f5",
-                  borderRadius: "50% 50% 50% 0",
-                  transform: "rotate(-45deg)",
-                  position: "relative",
-                }}
-              >
-                <div
-                  style={{
-                    width: "8px",
-                    height: "8px",
-                    backgroundColor: "white",
-                    borderRadius: "50%",
-                    position: "absolute",
-                    top: "6px",
-                    left: "6px",
-                  }}
-                />
+              <div className="map-marker-pin">
+                <div className="map-marker-center" />
               </div>
             </button>
           </Marker>
@@ -137,11 +162,60 @@ export default function IntMap() {
           <Popup
             longitude={selected.longitude}
             latitude={selected.latitude}
-            anchor="top"
-            onClose={() => setSelected(null)}
+            anchor="bottom"
+            offset={20}
+            closeButton={true}
+            closeOnClick={false}
+            onClose={() => {
+              setSelected(null);
+              setMaterials([]);
+            }}
           >
-            <strong>{selected.name}</strong>
-            {selected.address && <div>{selected.address}</div>}
+            <div className="map-popup-card">
+              <h3 className="map-popup-heading">{selected.name}</h3>
+
+              <p className="map-popup-address">
+                {selected.address ?? "Ingen adress"}
+              </p>
+
+              <div className="map-popup-materials">
+                <strong className="map-popup-title">
+                  Material i containern
+                </strong>
+
+                {isLoadingMaterials ? (
+                  <p className="map-popup-empty">Laddar material...</p>
+                ) : materials.length > 0 ? (
+                  <div className="map-material-scroll">
+                    {materials.map((material) => (
+                      <article key={material.id} className="map-material-card">
+                        <div className="map-material-image-wrap">
+                          {material.image_class ? (
+                            <img
+                              src={material.image_class}
+                              alt={material.name}
+                              className="map-material-image"
+                            />
+                          ) : (
+                            <span className="map-material-placeholder">
+                              Ingen bild
+                            </span>
+                          )}
+                        </div>
+
+                        <h4 className="map-material-name">{material.name}</h4>
+
+                        <p className="map-material-price">
+                          {material.price ?? "Pris saknas"}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="map-popup-empty">Inget material hittades.</p>
+                )}
+              </div>
+            </div>
           </Popup>
         )}
       </Map>
