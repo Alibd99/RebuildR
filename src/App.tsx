@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import QrScanner from "./components/QrScanner";
+import IntMap from "./components/Map";
 import { supabase } from "./lib/supabaseClient";
 
 type Screen =
@@ -9,7 +10,8 @@ type Screen =
   | "scan"
   | "confirm"
   | "complete"
-  | "log";
+  | "log"
+  | "find";
 type Filter = "all" | "buy" | "rent";
 type ScanMode = "lookup" | "verify";
 type BrowseScreen = "home" | "container";
@@ -1265,7 +1267,30 @@ function App() {
               </section>
             </>
           )}
+
+          {screen === "find" && (
+            <>
+              <section className="hero-panel hero-panel-compact">
+                <button
+                  className="back-link"
+                  type="button"
+                  onClick={() => setScreen("home")}
+                >
+                ← Tillbaka
+                </button>
+                <p className="eyebrow">Karta</p>
+                <h1>Hitta</h1>
+                <p className="lead">Här kan du hitta tillängliga container</p>
+              </section>
+
+              <section className="section">
+                <IntMap />
+              </section>
+            </>
+          )}
         </div>
+        
+        
 
         <nav className="bottom-nav" aria-label="Primär navigation">
           <button
@@ -1308,7 +1333,11 @@ function App() {
             Skanna
           </button>
 
-          <button className="nav-item" type="button">
+          <button 
+            className={screen === "find" ? "nav-item nav-item-active" : "nav-item"} 
+            type="button"
+            onClick={() => setScreen("find")}
+          >
             Hitta
           </button>
           <button className="nav-item" type="button">

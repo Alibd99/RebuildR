@@ -1,0 +1,113 @@
+.map-shell {
+  width: 100%;
+  height: clamp(320px, 45vh, 510px);
+}
+
+.map-marker-button {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.map-marker-pin {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  background-color: #18a0f5;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+}
+
+.map-marker-center {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 8px;
+  height: 8px;
+  background-color: #ffffff;
+  border-radius: 50%;
+}
+
+.map-popup-card {
+  min-width: 220px;
+  max-width: 280px;
+}
+
+.map-popup-heading {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.map-popup-address {
+  margin: 0 0 12px;
+  color: #5b625d;
+}
+
+.map-popup-materials {
+  padding: 10px 12px;
+  border: 1px solid #dce6dc;
+  border-radius: 12px;
+  background: #f7fbf8;
+}
+
+.map-popup-title {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.map-popup-empty {
+  margin: 0;
+  font-size: 14px;
+  color: #5b625d;
+}
+
+.map-material-scroll {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.map-material-card {
+  flex: 0 0 140px;
+  padding: 10px;
+  border: 1px solid #dce6dc;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.map-material-image-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 88px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #eef5ee;
+}
+
+.map-material-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.map-material-placeholder {
+  font-size: 12px;
+  color: #5b625d;
+}
+
+.map-material-name {
+  margin: 10px 0 4px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.map-material-price {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e2320;
+}
