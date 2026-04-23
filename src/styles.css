@@ -522,7 +522,7 @@ button {
 .filter-pill {
   flex-shrink: 0;
   min-height: 38px;
-  padding: 0 16px;
+  padding: 0 14px;
   border-radius: 999px;
   background: #f4f7f4;
   color: #506058;
@@ -922,3 +922,106 @@ button {
   display: block;
   border-radius: 16px;
 }
+
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 12px;
+  margin-top: 8px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mode-badge-pickup {
+  background: #e5efe9;
+  color: #2e7d32;
+}
+.mode-badge-transport {
+  background: #fff3e0;
+  color: #c77800;
+}
+
+.site-summary strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.bluetooth-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 12px;
+  margin-top: 8px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bluetooth-connected {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.bluetooth-disconnected {
+  background: #f5f5f5;
+  color: #777;
+}
+
+.button-loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.primary-button,
+.secondary-button,
+.filter-pill {
+  transition: all 0.2s ease;
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.filter-pill:hover {
+  transform: translateY(-1px);
+}
+
+.primary-button:active,
+.secondary-button:active,
+.filter-pill:active {
+  transform: scale(0.98);
+}
+
+.message-box {
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #f6f8f6;
+  color: #2e3c31;
+  border: 1px solid #e3ebe3;
+}
+
+.message-box p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.site-summary .mode-badge,
+.site-summary .bluetooth-badge {
+  width: fit-content;
+}
+
+.bluetooth-denied {
+  background: #fdecea;
+  color: #c62828;
+}
+
+.mode-badge  {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
