@@ -184,6 +184,33 @@ button {
   color: rgba(255, 255, 255, 0.78);
 }
 
+.unlock-panel {
+  margin-top: 14px;
+}
+
+.unlock-label {
+  display: block;
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.unlock-hint,
+.unlock-error {
+  margin: 8px 0 0;
+  font-size: 0.88rem;
+}
+
+.unlock-hint {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.unlock-error {
+  color: #ffe2e0;
+  font-weight: 600;
+}
+
 .section {
   padding: 20px;
 }
@@ -450,6 +477,16 @@ button {
 
 .form-input::placeholder {
   color: #819089;
+}
+
+.unlock-input {
+  margin-top: 0;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.form-input-error {
+  border-color: #d96b67;
+  box-shadow: 0 0 0 3px rgba(217, 107, 103, 0.12);
 }
 
 .message-box {
@@ -1024,4 +1061,3 @@ button {
   margin-top: 8px;
   flex-wrap: wrap;
 }
-

@@ -52,16 +52,17 @@ const createTimeLabel = () =>
     minute: "2-digit",
   });
 
-  type Container = {
+type Container = {
   id: string;
   name: string;
   mode: "pickup" | "transport";
+  accessCode: string;
 };
 
-  const containers: Container[] = [
-    { id: "A", name: "Container A", mode: "pickup" },
-    { id: "B", name: "Container B", mode: "pickup" },
-    { id: "C", name: "Container C", mode: "transport" },
+const containers: Container[] = [
+  { id: "A", name: "Container A", mode: "pickup", accessCode: "2468" },
+  { id: "B", name: "Container B", mode: "pickup", accessCode: "1357" },
+  { id: "C", name: "Container C", mode: "transport", accessCode: "0000" },
 ];
 
 function App() {
@@ -80,24 +81,29 @@ function App() {
   const [pickupError, setPickupError] = useState("");
   const [bluetoothConnected, setBluetoothConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [unlockCode, setUnlockCode] = useState("");
+  const [unlockCodeError, setUnlockCodeError] = useState("");
   const [detailReturnScreen, setDetailReturnScreen] =
     useState<BrowseScreen>("home");
   const [scanReturnScreen, setScanReturnScreen] =
     useState<ScanReturnScreen>("home");
 
-    const [selectedContainerId, setSelectedContainerId] = useState("A");
+  const [selectedContainerId, setSelectedContainerId] = useState("A");
 
-    const [bluetoothStatus, setBluetoothStatus] = useState<
+  const [bluetoothStatus, setBluetoothStatus] = useState<
     "idle" | "connecting" | "connected" | "unlocked" | "denied"
-    >("idle");
+  >("idle");
 
-    const [bluetoothMessage, setBluetoothMessage] = useState("");
+  const [bluetoothMessage, setBluetoothMessage] = useState("");
 
-    const currentContainer = containers.find(
-      (c) => c.id === selectedContainerId
-    );
+  const currentContainer = containers.find(
+    (c) => c.id === selectedContainerId
+  );
 
-    const containerName = currentContainer?.name ?? "containerName";
+  const containerName = currentContainer?.name ?? "containerName";
+
+  const normalizeUnlockCode = (value: string) =>
+    value.trim().replace(/\s+/g, "");
 
     
     const fetchMaterials = useCallback(async () => {
@@ -445,20 +451,59 @@ function App() {
   const handleBluetoothAccess = () => {
     if (!currentContainer) return;
 
+    setUnlockCodeError("");
+
+    if (currentContainer.mode === "transport") {
+      setBluetoothConnected(false);
+      setIsConnecting(false);
+      setBluetoothStatus("denied");
+      setBluetoothMessage(
+        "Åtkomst nekad. Denna container är markerad för transport till hub."
+      );
+      addEventLogItem({
+        title: "Container låst",
+        description: `${containerName} kan inte öppnas eftersom den är markerad för transport.`,
+        status: "warning",
+      });
+      return;
+    }
+
+    const enteredCode = normalizeUnlockCode(unlockCode);
+    const expectedCode = normalizeUnlockCode(currentContainer.accessCode);
+
+    if (!enteredCode) {
+      setBluetoothConnected(false);
+      setIsConnecting(false);
+      setBluetoothStatus("denied");
+      setUnlockCodeError("Ange containerkoden innan du låser upp.");
+      setBluetoothMessage("Åtkomst nekad. Ingen containerkod angiven.");
+      addEventLogItem({
+        title: "Containerkod saknas",
+        description: `${containerName} kunde inte öppnas eftersom ingen kod angavs.`,
+        status: "warning",
+      });
+      return;
+    }
+
+    if (enteredCode !== expectedCode) {
+      setBluetoothConnected(false);
+      setIsConnecting(false);
+      setBluetoothStatus("denied");
+      setUnlockCodeError("Fel kod. Kontrollera koden och försök igen.");
+      setBluetoothMessage("Åtkomst nekad. Containerkoden stämde inte.");
+      addEventLogItem({
+        title: "Fel containerkod",
+        description: `${containerName} nekade åtkomst efter en felaktig kod.`,
+        status: "warning",
+      });
+      return;
+    }
+
+    setIsConnecting(true);
     setBluetoothStatus("connecting");
-    setBluetoothMessage(`Ansluter till ${containerName} via Bluetooth...`);
+    setBluetoothMessage(`Kod verifierad. Ansluter till ${containerName} via Bluetooth...`);
 
     setTimeout(() => {
-      if (currentContainer.mode === "transport") {
-        setBluetoothConnected(false);
-        setIsConnecting(false);
-        setBluetoothStatus("denied");
-        setBluetoothMessage(
-          "Åtkomst nekad. Denna container är markerad för transport till hub."
-        );
-        return;
-      }
-
       const hasAccess = items.some(
         (item) =>
           item.assignedUser === currentUser &&
@@ -473,16 +518,27 @@ function App() {
         setBluetoothMessage(
           "Åtkomst nekad. Du har inga material redo för upphämtning i denna container."
         );
+        addEventLogItem({
+          title: "Åtkomst nekad",
+          description: `${currentUser} saknar material redo för upphämtning i ${containerName}.`,
+          status: "warning",
+        });
         return;
       }
+
       setBluetoothConnected(true);
       setIsConnecting(false);
       setBluetoothStatus("connected");
-      setBluetoothMessage(`Bluetooth ansluten till ${containerName}.`);
+      setBluetoothMessage(`Kod godkänd. Bluetooth ansluten till ${containerName}.`);
 
       setTimeout(() => {
         setBluetoothStatus("unlocked");
         setBluetoothMessage(`${containerName} är nu öppnad.`);
+        addEventLogItem({
+          title: "Container öppnad",
+          description: `${containerName} öppnades efter verifierad containerkod.`,
+          status: "success",
+        });
       }, 1000);
     }, 1200);
   };
@@ -565,6 +621,36 @@ function App() {
                         : "Inga artiklar redo för upphämtning just nu"
                       : "Containern väntar på transport till hub"}
                   </p>
+                  <div className="unlock-panel">
+                    <label className="unlock-label" htmlFor="container-unlock-code">
+                      Containerkod
+                    </label>
+                    <input
+                      id="container-unlock-code"
+                      className={
+                        unlockCodeError
+                          ? "form-input unlock-input form-input-error"
+                          : "form-input unlock-input"
+                      }
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="Ange kod"
+                      value={unlockCode}
+                      onChange={(event) => {
+                        setUnlockCode(event.target.value);
+                        if (unlockCodeError) {
+                          setUnlockCodeError("");
+                        }
+                      }}
+                    />
+                    <p className="unlock-hint">
+                      Ange koden för vald container innan upplåsning.
+                    </p>
+                    {unlockCodeError && (
+                      <p className="unlock-error">{unlockCodeError}</p>
+                    )}
+                  </div>
                   <div className="item-action" style={{ marginTop: "12px" }}>
                   <button
                     className="primary-button"
@@ -572,7 +658,7 @@ function App() {
                     onClick={handleBluetoothAccess}
                     disabled={isConnecting}
                   >
-                    {isConnecting ? "Ansluter..." : "Anslut till container via Bluetooth"}
+                    {isConnecting ? "Ansluter..." : "Verifiera kod och lås upp"}
                       </button> 
                   </div>
 
@@ -595,6 +681,10 @@ function App() {
                   onClick={() => {
                     setSelectedContainerId(c.id);
                     setSelectedId(null);
+                    setUnlockCode("");
+                    setUnlockCodeError("");
+                    setBluetoothConnected(false);
+                    setIsConnecting(false);
                     setBluetoothStatus("idle");
                     setBluetoothMessage("");
                   }}
