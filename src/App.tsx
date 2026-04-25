@@ -504,28 +504,6 @@ function App() {
     setBluetoothMessage(`Kod verifierad. Ansluter till ${containerName} via Bluetooth...`);
 
     setTimeout(() => {
-      const hasAccess = items.some(
-        (item) =>
-          item.assignedUser === currentUser &&
-          item.location === containerName &&
-          (item.status === "Redo" || item.status === "Uthyrbar")
-      );
-
-      if (!hasAccess) {
-        setBluetoothConnected(false);
-        setIsConnecting(false);
-        setBluetoothStatus("denied");
-        setBluetoothMessage(
-          "Åtkomst nekad. Du har inga material redo för upphämtning i denna container."
-        );
-        addEventLogItem({
-          title: "Åtkomst nekad",
-          description: `${currentUser} saknar material redo för upphämtning i ${containerName}.`,
-          status: "warning",
-        });
-        return;
-      }
-
       setBluetoothConnected(true);
       setIsConnecting(false);
       setBluetoothStatus("connected");
@@ -533,10 +511,17 @@ function App() {
 
       setTimeout(() => {
         setBluetoothStatus("unlocked");
-        setBluetoothMessage(`${containerName} är nu öppnad.`);
+        setBluetoothMessage(
+          ownReadyCount > 0
+            ? `${containerName} är nu öppnad. ${ownReadyCount} artiklar är redo för upphämtning.`
+            : `${containerName} är nu öppnad. Du har inga artiklar redo för upphämtning just nu.`
+        );
         addEventLogItem({
           title: "Container öppnad",
-          description: `${containerName} öppnades efter verifierad containerkod.`,
+          description:
+            ownReadyCount > 0
+              ? `${containerName} öppnades efter verifierad containerkod.`
+              : `${containerName} öppnades efter verifierad containerkod, men inga artiklar är redo för upphämtning.`,
           status: "success",
         });
       }, 1000);
