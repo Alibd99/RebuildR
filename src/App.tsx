@@ -11,7 +11,8 @@ type Screen =
   | "confirm"
   | "complete"
   | "log"
-  | "find";
+  | "find"
+  | "inbox";
 type Filter = "all" | "buy" | "rent";
 type ScanMode = "lookup" | "verify";
 type BrowseScreen = "home" | "container";
@@ -84,6 +85,7 @@ function App() {
   const [unlockCode, setUnlockCode] = useState("");
   const [unlockCodeError, setUnlockCodeError] = useState("");
   const [hasScanned, setHasScanned] = useState(false);
+  const [inboxMode, setInboxMode] = useState<"seller" | "buyer">("seller");
   const [detailReturnScreen, setDetailReturnScreen] =
     useState<BrowseScreen>("home");
   const [scanReturnScreen, setScanReturnScreen] =
@@ -556,6 +558,7 @@ function App() {
                     Byggläge
                   </button>
                 </div>
+                
 
                 <p className="eyebrow">Rosendal Etapp 2</p>
                 <h1>Min byggarbetsplats</h1>
@@ -1008,6 +1011,73 @@ function App() {
             </>
           )}
 
+          {screen === "inbox" && (
+  <>
+    <section className="section">
+
+      {/* TOGGLE – LIGGER ÖVERST */}
+      <div className="filter-row" style={{ marginBottom: "20px" }}>
+        <button
+          className={
+            inboxMode === "seller"
+              ? "filter-pill filter-pill-active"
+              : "filter-pill"
+          }
+          onClick={() => setInboxMode("seller")}
+        >
+          Säljer
+        </button>
+
+        <button
+          className={
+            inboxMode === "buyer"
+              ? "filter-pill filter-pill-active"
+              : "filter-pill"
+          }
+          onClick={() => setInboxMode("buyer")}
+        >
+          Köper
+        </button>
+      </div>
+
+      {/* RUBRIK */}
+      <p className="eyebrow">Inkorg</p>
+
+      <div style={{ borderBottom: "1px solid #ddd", margin: "18px 0 28px" }} />
+
+      <h1 style={{ fontSize: "40px", marginBottom: "24px" }}>
+        Du har 0 olästa
+      </h1>
+
+      {/* DYNAMISK TEXT */}
+      <div style={{ marginBottom: "28px" }}>
+        <h2>
+          {inboxMode === "seller" ? "Säljer" : "Köper"}: 0 Olästa
+        </h2>
+
+        <p>
+          Härligt! Du har läst alla meddelanden.
+        </p>
+      </div>
+
+      <div style={{ borderBottom: "1px solid #ddd", margin: "18px 0 28px" }} />
+
+      <div>
+        <h2>
+          {inboxMode === "seller" ? "Säljer" : "Köper"}: Alla meddelanden
+        </h2>
+
+        <p>Här var det tomt.</p>
+      </div>
+
+    </section>
+  </>
+)}
+
+
+
+          
+
           {screen === "detail" && selectedItem && (
             <>
               <section className="hero-panel hero-panel-compact">
@@ -1432,7 +1502,11 @@ function App() {
           >
             Hitta
           </button>
-          <button className="nav-item" type="button">
+          <button
+          className={screen === "inbox" ? "nav-item nav-item-active" : "nav-item"}
+          type="button"
+          onClick={() => setScreen("inbox")}
+          >
             Inkorg
           </button>
         </nav>

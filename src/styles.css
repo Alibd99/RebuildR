@@ -916,8 +916,8 @@ button {
 }
 
 .nav-item-center {
-  background: rgba(203, 223, 210, 0.96);
-  font-weight: 700;
+  background: transparent;
+  font-weight: 500;
 }
 
 .nav-item-active {
