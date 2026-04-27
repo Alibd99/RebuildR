@@ -83,6 +83,7 @@ function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [unlockCode, setUnlockCode] = useState("");
   const [unlockCodeError, setUnlockCodeError] = useState("");
+  const [hasScanned, setHasScanned] = useState(false);
   const [detailReturnScreen, setDetailReturnScreen] =
     useState<BrowseScreen>("home");
   const [scanReturnScreen, setScanReturnScreen] =
@@ -332,9 +333,12 @@ function App() {
   };
 
   const handleScanResult = (text: string) => {
+    if (hasScanned) return;
+
+    setHasScanned(false);
+    setScannerEnabled(false);
     setScanInput(text);
     setVerifyMessage("");
-    setScannerEnabled(false);
 
     if (scanMode === "lookup") {
       const foundItem = lookupItemByCode(text);
@@ -443,6 +447,7 @@ function App() {
   })();
 
   const detailActionEnabled =
+    bluetoothStatus === "unlocked" &&
     selectedItemContainer?.mode === "pickup" &&
     selectedItem?.assignedUser === currentUser &&
     selectedItem?.status !== "Hämtad" &&
@@ -562,7 +567,7 @@ function App() {
                 <article className="site-summary">
                   <div className="site-summary-row">
                     <span>{containerName}</span>
-                    <span>Öppen nu</span>
+                    <span>Tillgänglig</span>
                   </div>
 
                   <strong>Inloggad: {currentUser}</strong>
@@ -606,6 +611,13 @@ function App() {
                         : "Inga artiklar redo för upphämtning just nu"
                       : "Containern väntar på transport till hub"}
                   </p>
+
+                  {currentContainer?.mode === "transport" && (
+                    <div className="message-box" style={{ marginTop: "12px" }}>
+                      <p>Denna container är i transportläge och kan inte öppnas för individuell upphämtning.</p>
+                    </div>
+                  )}
+
                   <div className="unlock-panel">
                     <label className="unlock-label" htmlFor="container-unlock-code">
                       Containerkod
@@ -645,6 +657,7 @@ function App() {
                   >
                     {isConnecting ? "Ansluter..." : "Verifiera kod och lås upp"}
                       </button> 
+
                   </div>
 
                     {bluetoothMessage && (
@@ -652,6 +665,10 @@ function App() {
                         <p> {bluetoothMessage} </p>
                       </div>
                       )}
+
+                      <div className="message-box message-box-soft" style={{ marginTop: "12px" }}>
+                        <p>QR används för att verifiera material. Bluetooth används för att öppna containern.</p>
+                      </div>
                 </article>
 
                 <div className="filter-row" style={{ marginTop: "16px" }}>
