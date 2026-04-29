@@ -17,7 +17,7 @@ type Material = {
   name: string;
   price: string | null;
   image_class: string | null;
-  location: string | null;
+  containers: string;
 };
 
 export default function IntMap() {
@@ -57,8 +57,8 @@ export default function IntMap() {
 
     const { data, error } = await supabase
       .from("materials")
-      .select("id, name, price, image_class, location")
-      .eq("location", containerName);
+      .select("id, name, price, image_class, containers!inner(name)")
+      .eq("containers.name", containerName);
 
     if (error) {
       console.error("Error fetching materials:", error);
@@ -76,6 +76,7 @@ export default function IntMap() {
       return {
         ...material,
         image_class: imageUrl,
+        containers: material.containers?.name ?? "",
       };
     });
 

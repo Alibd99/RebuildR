@@ -25,7 +25,7 @@ type Material = {
   name: string;
   details: string;
   description: string;
-  location: string;
+  container: string;
   price: string;
   type: "buy" | "rent";
   status: MaterialStatus;
@@ -54,17 +54,11 @@ const createTimeLabel = () =>
   });
 
 type Container = {
-  id: string;
+  id: number;
   name: string;
   mode: "pickup" | "transport";
   accessCode: string;
 };
-
-const containers: Container[] = [
-  { id: "A", name: "Container A", mode: "pickup", accessCode: "2468" },
-  { id: "B", name: "Container B", mode: "pickup", accessCode: "1357" },
-  { id: "C", name: "Container C", mode: "transport", accessCode: "0000" },
-];
 
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
@@ -91,7 +85,11 @@ function App() {
   const [scanReturnScreen, setScanReturnScreen] =
     useState<ScanReturnScreen>("home");
 
-  const [selectedContainerId, setSelectedContainerId] = useState("A");
+  const [containers, setContainers] = useState<Container[]>([]);
+  const [isLoadingContainers, setIsLoadingContainers] = useState(true);
+  const [containerError, setContainerError] = useState("");
+  const [selectedContainerId, setSelectedContainerId] = useState<number | null>(null);
+
 
   const [bluetoothStatus, setBluetoothStatus] = useState<
     "idle" | "connecting" | "connected" | "unlocked" | "denied"
@@ -113,7 +111,7 @@ function App() {
       setIsLoadingMaterials(true);
       setMaterialError("");
 
-    const { data, error } = await supabase.from("materials").select("*");
+    const { data, error } = await supabase.from("materials").select("*, containers(name)");
 
     if (error) {
       console.error("Error fetching materials: ", error);
@@ -133,7 +131,7 @@ function App() {
         name: col.name,
         details: col.details ?? "",
         description: col.description ?? "",
-        location: col.location ?? "",
+        container: col.containers?.name ?? "",
         price: col.price ?? "",
         type: col.type ?? "buy",
         status: (col.status ?? "Kontroll") as MaterialStatus,
@@ -151,13 +149,49 @@ function App() {
     fetchMaterials();
   }, [fetchMaterials]);
 
+  const fetchContainers = useCallback(async () => {
+    setIsLoadingContainers(true);
+    setContainerError("");
+
+    const { data, error } = await supabase
+      .from("containers")
+      .select("id, name, mode, access_code")
+      .order("name");
+
+    if (error) {
+      console.error("Error fetching containers:", error);
+      setContainerError("Kunde inte hämta containrar från databasen.");
+      setIsLoadingContainers(false);
+      return;
+    }
+
+    const mappedContainers: Container[] = (data ?? []).map((container) => ({
+      id: container.id,
+      name: container.name,
+      mode: (container.mode ?? "pickup") as "pickup" | "transport",
+      accessCode: String(container.access_code ?? ""),
+    }));
+
+    setContainers(mappedContainers);
+
+    if ((data ?? []).length > 0) {
+      setSelectedContainerId((current) => current ?? data![0].id);
+    }
+
+    setIsLoadingContainers(false);
+  }, []);
+
+  useEffect(() => {
+    fetchContainers();
+  }, [fetchContainers]);
+
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
     [items, selectedId]
   );
 
   const selectedItemContainer = containers.find(
-      (c) => c.name === selectedItem?.location
+      (c) => c.name === selectedItem?.container
     );
 
 
@@ -165,7 +199,7 @@ function App() {
   () =>
     items.filter((item) => {
       const matchesFilter = filter === "all" ? true : item.type === filter;
-      const matchesContainer = item.location === containerName;
+      const matchesContainer = item.container === containerName;
       return matchesFilter && matchesContainer;
       }),
     [items, filter, containerName]
@@ -176,7 +210,7 @@ function App() {
     items.filter(
       (item) =>
         item.assignedUser === currentUser &&
-        item.location === containerName
+        item.container === containerName
     ),
   [items, containerName]
   );
@@ -795,7 +829,7 @@ function App() {
 
                         <h3>{item.name}</h3>
                         <p>{item.details}</p>
-                        <strong>{item.location}</strong>
+                        <strong>{item.container}</strong>
 
                         <div className="inline-actions">
                           <button
@@ -1088,7 +1122,7 @@ function App() {
                 >
                   ← Tillbaka
                 </button>
-                <p className="eyebrow">{selectedItem.location}</p>
+                <p className="eyebrow">{selectedItem.container}</p>
                 <h1>{selectedItem.name}</h1>
                 <p className="lead">{selectedItem.description}</p>
               </section>
@@ -1186,7 +1220,7 @@ function App() {
                     <div className="scan-target">
                       <h3>{selectedItem.name}</h3>
                       <p>{selectedItem.details}</p>
-                      <p>Plats: {selectedItem.location}</p>
+                      <p>Plats: {selectedItem.container}</p>
                       <p>
                         Tilldelad:{" "}
                         {selectedItem.assignedUser === currentUser
@@ -1303,7 +1337,7 @@ function App() {
                 <article className="card card-highlight">
                   <h3>{selectedItem.name}</h3>
                   <p>{selectedItem.details}</p>
-                  <p>Plats: {selectedItem.location}</p>
+                  <p>Plats: {selectedItem.container}</p>
                   <p>Tilldelad: {selectedItem.assignedUser}</p>
 
                   <div className="item-actions">
