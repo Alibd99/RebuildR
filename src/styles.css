@@ -184,6 +184,13 @@ button {
   color: rgba(255, 255, 255, 0.78);
 }
 
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .unlock-panel {
   margin-top: 14px;
 }
@@ -479,6 +486,16 @@ button {
   color: #819089;
 }
 
+.form-select {
+  appearance: none;
+}
+
+.form-textarea {
+  min-height: 110px;
+  padding: 12px;
+  resize: vertical;
+}
+
 .unlock-input {
   margin-top: 0;
   background: rgba(255, 255, 255, 0.96);
@@ -487,6 +504,12 @@ button {
 .form-input-error {
   border-color: #d96b67;
   box-shadow: 0 0 0 3px rgba(217, 107, 103, 0.12);
+}
+
+.support-text {
+  margin: -4px 0 0;
+  color: var(--ink-700);
+  font-size: 0.88rem;
 }
 
 .message-box {
@@ -1001,6 +1024,11 @@ button {
 .bluetooth-connected {
   background: #e3f2fd;
   color: #1565c0;
+}
+
+.bluetooth-denied {
+  background: #ffe7e5;
+  color: #b14b42;
 }
 
 .bluetooth-disconnected {
