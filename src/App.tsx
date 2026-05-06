@@ -377,6 +377,89 @@ function App() {
     item.status === "Kontroll" ||
     getRentalRecord(item.id)?.rentalStatus === "inspection_needed";
 
+  const isItemReadyForCurrentUser = (item: Material) =>
+    item.assignedUser === currentUser &&
+    (item.type === "rent" ? isRentalAvailable(item) : item.status === "Redo");
+
+  const getItemSystemStatusLabel = (item: Material) => {
+    const statusLabel = getItemStatusLabel(item);
+
+    if (statusLabel === "Redo") {
+      return "Redo i systemet";
+    }
+
+    if (statusLabel === "Uthyrbar") {
+      return "Uthyrbar i systemet";
+    }
+
+    return statusLabel;
+  };
+
+  const getItemUserStatusLabel = (item: Material) => {
+    if (item.type === "rent") {
+      const rentalRecord = getRentalRecord(item.id);
+
+      if (rentalRecord?.rentalStatus === "checked_out") {
+        const holderName =
+          rentalRecord.currentHolder || item.assignedUser || "annan användare";
+
+        return holderName === currentUser
+          ? "Pågående för dig"
+          : `Utlånad till ${holderName}`;
+      }
+    }
+
+    if (isItemWaitingForInspection(item)) {
+      return "Väntar på kontroll";
+    }
+
+    if (!item.assignedUser) {
+      return "Behöver tilldelas";
+    }
+
+    if (item.assignedUser === currentUser) {
+      return item.type === "rent" ? "Uthyrbar för dig" : "Redo för dig";
+    }
+
+    if (item.status === "Hämtad") {
+      return `Hämtad av ${item.assignedUser}`;
+    }
+
+    return `Reserverad för ${item.assignedUser}`;
+  };
+
+  const getItemUserStatusClassName = (item: Material) => {
+    if (isItemReadyForCurrentUser(item) || isRentalCheckedOutToCurrentUser(item)) {
+      return "status-pill status-pill-outline";
+    }
+
+    if (isItemWaitingForInspection(item)) {
+      return "status-pill status-pill-soft";
+    }
+
+    return "status-pill status-pill-muted";
+  };
+
+  const getItemSortPriority = (item: Material) => {
+    if (isItemReadyForCurrentUser(item)) {
+      return 0;
+    }
+
+    if (isRentalCheckedOutToCurrentUser(item)) {
+      return 1;
+    }
+
+    if (item.assignedUser === currentUser) {
+      return 2;
+    }
+
+    if (!item.assignedUser) {
+      return 3;
+    }
+
+    return 4;
+  };
+
   const filteredItems = useMemo(
     () =>
       items.filter((item) => {
@@ -385,6 +468,29 @@ function App() {
         return matchesFilter && matchesContainer;
       }),
     [items, filter, containerName]
+  );
+
+  const prioritizedFilteredItems = useMemo(
+    () =>
+      [...filteredItems].sort((leftItem, rightItem) => {
+        const priorityDifference =
+          getItemSortPriority(leftItem) - getItemSortPriority(rightItem);
+
+        if (priorityDifference !== 0) {
+          return priorityDifference;
+        }
+
+        const inspectionDifference =
+          Number(isItemWaitingForInspection(leftItem)) -
+          Number(isItemWaitingForInspection(rightItem));
+
+        if (inspectionDifference !== 0) {
+          return inspectionDifference;
+        }
+
+        return leftItem.name.localeCompare(rightItem.name, "sv");
+      }),
+    [filteredItems, rentalRecords]
   );
 
   const userItems = useMemo(
@@ -1563,8 +1669,12 @@ function App() {
                   </button>
                 </div>
 
+                <p className="section-note">
+                  Visar först sådant som är mest relevant för dig.
+                </p>
+
                 <div className="item-list">
-                  {filteredItems.slice(0, 2).map((item) => (
+                  {prioritizedFilteredItems.slice(0, 2).map((item) => (
                     <article className="item-card" key={item.id}>
                       <div className="item-card-top">
                         <img
@@ -1594,7 +1704,13 @@ function App() {
                               : "status-pill"
                           }
                         >
-                          {getItemStatusLabel(item)}
+                          {getItemSystemStatusLabel(item)}
+                        </span>
+                      </div>
+
+                      <div className="badge-row">
+                        <span className={getItemUserStatusClassName(item)}>
+                          {getItemUserStatusLabel(item)}
                         </span>
                       </div>
 
@@ -1671,6 +1787,11 @@ function App() {
                     Att hyra
                   </button>
                 </div>
+
+                <p className="section-note">
+                  Listan prioriterar sådant som du kan hämta, hyra eller
+                  returnera först.
+                </p>
               </section>
 
               <section className="section section-tight">
@@ -1701,10 +1822,10 @@ function App() {
                       </div>
                     )}
                   </article>
-                ) : filteredItems.length > 0 ? (
+                ) : prioritizedFilteredItems.length > 0 ? (
                   <div className="container-list">
-                    {filteredItems.map((item) => {
-                      const statusLabel = getItemStatusLabel(item);
+                    {prioritizedFilteredItems.map((item) => {
+                      const statusLabel = getItemSystemStatusLabel(item);
 
                       return (
                         <article className="container-row" key={item.id}>
@@ -1739,6 +1860,12 @@ function App() {
                                 }
                               >
                                 {statusLabel}
+                              </span>
+                            </div>
+
+                            <div className="badge-row">
+                              <span className={getItemUserStatusClassName(item)}>
+                                {getItemUserStatusLabel(item)}
                               </span>
                             </div>
 
@@ -2132,21 +2259,30 @@ function App() {
                       <label className="unlock-label" htmlFor="return-condition">
                         Returstatus
                       </label>
-                      <select
-                        id="return-condition"
-                        className="form-input form-select"
-                        value={returnCondition}
-                        onChange={(event) =>
-                          setReturnCondition(
-                            event.target.value as ReturnCondition
-                          )
-                        }
-                      >
-                        <option value="ready">Redo för ny uthyrning</option>
-                        <option value="inspection_needed">
-                          Behöver kontroll
-                        </option>
-                      </select>
+                      <div className="select-field">
+                        <select
+                          id="return-condition"
+                          className="form-input form-select"
+                          value={returnCondition}
+                          onChange={(event) =>
+                            setReturnCondition(
+                              event.target.value as ReturnCondition
+                            )
+                          }
+                        >
+                          <option value="ready">Redo för ny uthyrning</option>
+                          <option value="inspection_needed">
+                            Behöver kontroll
+                          </option>
+                        </select>
+                        <span className="select-indicator" aria-hidden="true">
+                          Välj
+                        </span>
+                      </div>
+                      <p className="support-text">
+                        Tryck på fältet för att välja om materialet kan hyras ut
+                        igen direkt eller behöver kontroll först.
+                      </p>
 
                       <label className="unlock-label" htmlFor="return-notes">
                         Anteckning om skick

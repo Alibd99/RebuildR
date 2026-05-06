@@ -42,7 +42,9 @@ a {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -198,9 +200,13 @@ button {
 .unlock-label {
   display: block;
   margin-bottom: 8px;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--ink-900);
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+.unlock-panel .unlock-label {
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .unlock-hint,
@@ -238,6 +244,12 @@ button {
   color: var(--ink-900);
   font-size: 1.45rem;
   letter-spacing: -0.04em;
+}
+
+.section-note {
+  margin: -2px 0 14px;
+  color: var(--ink-700);
+  font-size: 0.9rem;
 }
 
 .text-link,
@@ -430,8 +442,16 @@ button {
 }
 
 .card-highlight {
-  background: var(--green-100);
-  border-color: #d0e3d6;
+  background: #edf6ef;
+  border-color: #c8ddd0;
+}
+
+.card-highlight .unlock-label {
+  color: var(--ink-900);
+}
+
+.card-highlight .support-text {
+  color: #536159;
 }
 
 .detail-grid {
@@ -480,20 +500,86 @@ button {
   border-radius: 12px;
   color: var(--ink-900);
   background: #ffffff;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #78a48f;
+  box-shadow: 0 0 0 4px rgba(20, 106, 88, 0.12);
 }
 
 .form-input::placeholder {
-  color: #819089;
+  color: #6f7c76;
+  opacity: 1;
 }
 
 .form-select {
   appearance: none;
+  -webkit-appearance: none;
+  padding-right: 96px;
+  cursor: pointer;
+}
+
+.select-field {
+  position: relative;
+}
+
+.select-field .form-select {
+  margin-top: 0;
+}
+
+.select-indicator {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #c4d5ca;
+  border-radius: 999px;
+  background: #eef4f0;
+  color: #355347;
+  font-size: 0.82rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.select-indicator::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-top: -3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
 }
 
 .form-textarea {
   min-height: 110px;
   padding: 12px;
   resize: vertical;
+  line-height: 1.45;
+}
+
+.card-highlight .form-input {
+  border-color: #bdd2c3;
+  background: #ffffff;
+}
+
+.card-highlight .form-input::placeholder {
+  color: #6a7670;
+}
+
+.card-highlight .select-indicator {
+  border-color: #b8cebe;
+  background: #e4efe8;
 }
 
 .unlock-input {
@@ -721,18 +807,32 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 32px;
-  padding: 0 12px;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 6px 12px;
   border-radius: 999px;
   background: #dff0e6;
   color: #2f5b4f;
   font-size: 0.82rem;
   font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .status-pill-soft {
   background: var(--lavender-100);
   color: #57536b;
+}
+
+.status-pill-outline {
+  border: 1px solid #b6d4c3;
+  background: #ffffff;
+  color: var(--green-900);
+}
+
+.status-pill-muted {
+  background: #eef2ef;
+  color: #5f6c65;
 }
 
 .section-tight {
