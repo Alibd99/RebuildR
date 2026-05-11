@@ -93,6 +93,18 @@ button {
   gap: 10px;
 }
 
+.topbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-user {
+  color: #4e5c55;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
 .topbar-actions span {
   display: block;
   width: 12px;
@@ -206,6 +218,31 @@ button {
   margin-top: 14px;
 }
 
+.unlock-session-card {
+  display: grid;
+  gap: 6px;
+}
+
+.unlock-session-card strong {
+  color: var(--green-900);
+  font-size: 1.8rem;
+  letter-spacing: 0.08em;
+}
+
+.unlock-session-label {
+  color: #54635b !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.unlock-session-meta {
+  color: #607169 !important;
+  font-size: 0.88rem !important;
+  font-weight: 600 !important;
+}
+
 .unlock-label {
   display: block;
   margin-bottom: 8px;
@@ -231,6 +268,48 @@ button {
 .unlock-error {
   color: #ffe2e0;
   font-weight: 600;
+}
+
+.unlock-status-box {
+  display: grid;
+  gap: 6px;
+}
+
+.unlock-status-box h3 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.unlock-status-box p {
+  font-weight: 500;
+}
+
+.unlock-status-box-success {
+  background: #eef8f2;
+  border-color: #c6e3cf;
+}
+
+.unlock-status-box-success h3 {
+  color: #1d6b43;
+}
+
+.unlock-status-box-warning {
+  background: #fff1ef;
+  border-color: #f0c4be;
+}
+
+.unlock-status-box-warning h3 {
+  color: #b14b42;
+}
+
+.unlock-status-box-info {
+  background: #eef5ff;
+  border-color: #cadcf9;
+}
+
+.unlock-status-box-info h3 {
+  color: #285ea8;
 }
 
 .section {
@@ -423,6 +502,11 @@ button {
   box-shadow: 0 1px 0 rgba(12, 92, 77, 0.02);
 }
 
+.auth-card {
+  display: grid;
+  gap: 18px;
+}
+
 .card h3 {
   margin: 0 0 10px;
   font-size: 1.2rem;
@@ -461,6 +545,20 @@ button {
 
 .card-highlight .support-text {
   color: #536159;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.field-group {
+  display: grid;
+  gap: 8px;
+}
+
+.field-group .form-input {
+  margin-top: 0;
 }
 
 .detail-grid {
