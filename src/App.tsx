@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Session, User } from "@supabase/supabase-js";
 import QrScanner from "./components/QrScanner";
 import IntMap from "./components/Map";
 import { supabase } from "./lib/supabaseClient";
@@ -66,12 +67,41 @@ type Container = {
   id: number;
   name: string;
   mode: "pickup" | "transport";
-  accessCode: string;
 };
 
-const currentUser = "Ali";
+type Profile = {
+  id: string;
+  email: string;
+  displayName: string;
+  role: "worker" | "manager" | "admin";
+};
+
+type UnlockState = {
+  assignmentCount: number;
+  personalAccessCode: string;
+  codeExpiresAt: string | null;
+};
 
 const normalizeCode = (value: string) => value.trim().toLowerCase();
+
+const deriveDisplayName = (user?: User | null) => {
+  const metadataName =
+    typeof user?.user_metadata?.display_name === "string"
+      ? user.user_metadata.display_name.trim()
+      : "";
+
+  if (metadataName) {
+    return metadataName;
+  }
+
+  const email = user?.email?.trim() ?? "";
+
+  if (email) {
+    return email.split("@")[0];
+  }
+
+  return "";
+};
 
 const createTimeLabel = (value?: string) =>
   new Date(value ?? new Date().toISOString()).toLocaleTimeString("sv-SE", {
@@ -81,11 +111,24 @@ const createTimeLabel = (value?: string) =>
 
 const formatDateInput = (value: Date) => value.toISOString().slice(0, 10);
 
+const formatDateTimeLabel = (value?: string | null) =>
+  value
+    ? new Date(value).toLocaleString("sv-SE", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "Ej satt";
+
 const createDefaultDueDate = () => {
   const nextDate = new Date();
   nextDate.setDate(nextDate.getDate() + 14);
   return formatDateInput(nextDate);
 };
+
+const formatUnlockPin = (value?: string | null) =>
+  value ? value.replace(/(\d{3})(?=\d)/g, "$1 ").trim() : "";
 
 const toDueAtIso = (value: string) =>
   value ? new Date(`${value}T12:00:00`).toISOString() : null;
@@ -107,6 +150,11 @@ const getReturnConditionLabel = (value?: ReturnCondition | null) =>
       : "Inte registrerat";
 
 function App() {
+  const [authSession, setAuthSession] = useState<Session | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
+  const [profileError, setProfileError] = useState("");
   const [screen, setScreen] = useState<Screen>("home");
   const [filter, setFilter] = useState<Filter>("all");
   const [items, setItems] = useState<Material[]>([]);
@@ -131,6 +179,9 @@ function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [unlockCode, setUnlockCode] = useState("");
   const [unlockCodeError, setUnlockCodeError] = useState("");
+  const [unlockState, setUnlockState] = useState<UnlockState | null>(null);
+  const [isLoadingUnlockState, setIsLoadingUnlockState] = useState(false);
+  const [unlockStateError, setUnlockStateError] = useState("");
   const [hasScanned, setHasScanned] = useState(false);
   const [inboxMode, setInboxMode] = useState<"seller" | "buyer">("seller");
   const [detailReturnScreen, setDetailReturnScreen] =
@@ -152,15 +203,137 @@ function App() {
     "idle" | "connecting" | "connected" | "unlocked" | "denied"
   >("idle");
   const [bluetoothMessage, setBluetoothMessage] = useState("");
+  const [clockNow, setClockNow] = useState(() => Date.now());
 
   const currentContainer = containers.find(
     (container) => container.id === selectedContainerId
   );
 
   const containerName = currentContainer?.name ?? "Ingen vald container";
+  const currentUser =
+    currentProfile?.displayName ||
+    deriveDisplayName(authSession?.user) ||
+    "Okänd användare";
+  const isAuthenticated = Boolean(authSession?.user);
+  const isAuthLoading = !isAuthReady;
+  const personalAccessCode = unlockState?.personalAccessCode || "";
+  const codeSecondsRemaining = useMemo(() => {
+    if (!unlockState?.codeExpiresAt) {
+      return null;
+    }
+
+    const remainingMs =
+      new Date(unlockState.codeExpiresAt).getTime() - clockNow;
+
+    return Math.max(0, Math.ceil(remainingMs / 1000));
+  }, [clockNow, unlockState?.codeExpiresAt]);
 
   const normalizeUnlockCode = (value: string) =>
     value.trim().replace(/\s+/g, "");
+
+  const mapProfile = (profile: any): Profile => ({
+    id: String(profile.id),
+    email: String(profile.email ?? authSession?.user?.email ?? ""),
+    displayName: String(profile.display_name ?? deriveDisplayName(authSession?.user)),
+    role: (profile.role ?? "worker") as Profile["role"],
+  });
+
+  const mapUnlockState = (stateData: any): UnlockState => ({
+    assignmentCount: Number(stateData?.assignment_count ?? 0),
+    personalAccessCode: String(stateData?.personal_access_code ?? ""),
+    codeExpiresAt: stateData?.code_expires_at
+      ? String(stateData.code_expires_at)
+      : null,
+  });
+
+  const ensureCurrentProfile = useCallback(
+    async (preferredDisplayName?: string) => {
+      if (!authSession?.user) {
+        return null;
+      }
+
+      const fallbackDisplayName =
+        preferredDisplayName?.trim() ||
+        deriveDisplayName(authSession.user);
+
+      const { data, error } = await untypedSupabase.rpc("ensure_profile", {
+        p_display_name: fallbackDisplayName || null,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return mapProfile(data);
+    },
+    [authSession]
+  );
+
+  const loadCurrentProfile = useCallback(
+    async (preferredDisplayName?: string) => {
+      if (!authSession?.user) {
+        setCurrentProfile(null);
+        setProfileError("");
+        setIsLoadingProfile(false);
+        return null;
+      }
+
+      setIsLoadingProfile(true);
+      setProfileError("");
+
+      try {
+        const profile = await ensureCurrentProfile(preferredDisplayName);
+
+        if (profile) {
+          setCurrentProfile(profile);
+        }
+
+        return profile;
+      } catch (error) {
+        console.error("Error ensuring profile:", error);
+        setCurrentProfile(null);
+        setProfileError("Kunde inte läsa in din användarprofil.");
+        return null;
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    },
+    [authSession, ensureCurrentProfile]
+  );
+
+  const fetchUnlockState = useCallback(
+    async (containerId: number | null = selectedContainerId) => {
+      if (!authSession?.user || !containerId) {
+        setUnlockState(null);
+        setIsLoadingUnlockState(false);
+        return;
+      }
+
+      setIsLoadingUnlockState(true);
+      setUnlockStateError("");
+
+      const { data, error } = await untypedSupabase.rpc(
+        "get_container_access_state",
+        {
+          p_container_id: containerId,
+        }
+      );
+
+      if (error) {
+        console.error("Error fetching unlock state:", error);
+        setUnlockState(null);
+        setUnlockStateError("Kunde inte läsa in personlig åtkomst för containern.");
+        setIsLoadingUnlockState(false);
+        return;
+      }
+
+      const mappedState = mapUnlockState(data);
+
+      setUnlockState(mappedState);
+      setIsLoadingUnlockState(false);
+    },
+    [authSession, selectedContainerId]
+  );
 
   const fetchMaterials = useCallback(async () => {
     setIsLoadingMaterials(true);
@@ -208,7 +381,7 @@ function App() {
 
     const { data, error } = await supabase
       .from("containers")
-      .select("id, name, mode, access_code")
+      .select("id, name, mode")
       .order("name");
 
     if (error) {
@@ -222,7 +395,6 @@ function App() {
       id: container.id,
       name: container.name,
       mode: (container.mode ?? "pickup") as "pickup" | "transport",
-      accessCode: String(container.access_code ?? ""),
     }));
 
     setContainers(mappedContainers);
@@ -274,36 +446,140 @@ function App() {
     setIsLoadingEventLog(true);
     setEventLogError("");
 
-    const { data, error } = await untypedSupabase
-      .from("material_events")
-      .select(
-        "id, created_at, title, description, event_status, material_name, material_id"
-      )
-      .order("created_at", { ascending: false })
-      .limit(80);
+    const [{ data: materialEvents, error: materialErrorResult }, { data: unlockEvents, error: unlockErrorResult }] =
+      await Promise.all([
+        untypedSupabase
+          .from("material_events")
+          .select(
+            "id, created_at, title, description, event_status, material_name, material_id"
+          )
+          .order("created_at", { ascending: false })
+          .limit(60),
+        authSession?.user
+          ? untypedSupabase
+              .from("unlock_events")
+              .select("id, created_at, title, description, event_status")
+              .order("created_at", { ascending: false })
+              .limit(40)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
 
-    if (error) {
-      console.error("Error fetching event log:", error);
+    if (materialErrorResult) {
+      console.error("Error fetching event log:", materialErrorResult);
       setEventLogError("Kunde inte hämta händelseloggen från databasen.");
       setEventLog([]);
       setIsLoadingEventLog(false);
       return;
     }
 
-    const mappedLog: EventLogItem[] = ((data ?? []) as any[]).map((event) => ({
-      id: String(event.id),
-      createdAt: String(event.created_at ?? new Date().toISOString()),
-      time: createTimeLabel(event.created_at),
-      title: String(event.title ?? "Händelse"),
-      description: String(event.description ?? ""),
-      status: (event.event_status ?? "info") as EventStatus,
-      materialName: event.material_name ?? undefined,
-      materialId: event.material_id ?? undefined,
-    }));
+    if (unlockErrorResult) {
+      console.warn("Unlock events unavailable, falling back to material events only:", unlockErrorResult);
+    }
+
+    const mappedLog: EventLogItem[] = [
+      ...((materialEvents ?? []) as any[]).map((event) => ({
+        id: String(event.id),
+        createdAt: String(event.created_at ?? new Date().toISOString()),
+        time: createTimeLabel(event.created_at),
+        title: String(event.title ?? "Händelse"),
+        description: String(event.description ?? ""),
+        status: (event.event_status ?? "info") as EventStatus,
+        materialName: event.material_name ?? undefined,
+        materialId: event.material_id ?? undefined,
+      })),
+      ...((unlockEvents ?? []) as any[]).map((event) => ({
+        id: `unlock-${String(event.id)}`,
+        createdAt: String(event.created_at ?? new Date().toISOString()),
+        time: createTimeLabel(event.created_at),
+        title: String(event.title ?? "Containerhändelse"),
+        description: String(event.description ?? ""),
+        status: (event.event_status ?? "info") as EventStatus,
+      })),
+    ]
+      .sort(
+        (leftEvent, rightEvent) =>
+          new Date(rightEvent.createdAt).getTime() -
+          new Date(leftEvent.createdAt).getTime()
+      )
+      .slice(0, 80);
 
     setEventLog(mappedLog);
     setIsLoadingEventLog(false);
+  }, [authSession]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const hydrateSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (error) {
+        console.error("Error hydrating auth session:", error);
+      }
+
+      setAuthSession(data.session ?? null);
+      setIsAuthReady(true);
+    };
+
+    void hydrateSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthSession(session);
+      setIsAuthReady(true);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setClockNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!authSession?.user) {
+      setCurrentProfile(null);
+      setProfileError("");
+      setUnlockState(null);
+      setUnlockCode("");
+      setUnlockCodeError("");
+      setUnlockStateError("");
+      setBluetoothConnected(false);
+      setIsConnecting(false);
+      setBluetoothStatus("idle");
+      setBluetoothMessage("");
+      setIsLoadingProfile(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const syncProfile = async () => {
+      const profile = await loadCurrentProfile();
+
+      if (!isMounted || !profile) {
+        return;
+      }
+    };
+
+    void syncProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authSession, loadCurrentProfile]);
 
   useEffect(() => {
     fetchMaterials();
@@ -320,6 +596,37 @@ function App() {
   useEffect(() => {
     fetchEventLog();
   }, [fetchEventLog]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !selectedContainerId) {
+      setUnlockState(null);
+      setIsLoadingUnlockState(false);
+      return;
+    }
+
+    void fetchUnlockState(selectedContainerId);
+  }, [fetchUnlockState, isAuthenticated, selectedContainerId]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !selectedContainerId || !unlockState?.codeExpiresAt) {
+      return;
+    }
+
+    const refreshInMs =
+      new Date(unlockState.codeExpiresAt).getTime() - Date.now() + 1000;
+    const safeDelay = Math.max(refreshInMs, 1000);
+
+    const timer = window.setTimeout(() => {
+      void fetchUnlockState(selectedContainerId);
+    }, safeDelay);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    fetchUnlockState,
+    isAuthenticated,
+    selectedContainerId,
+    unlockState?.codeExpiresAt,
+  ]);
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
@@ -490,7 +797,7 @@ function App() {
 
         return leftItem.name.localeCompare(rightItem.name, "sv");
       }),
-    [filteredItems, rentalRecords]
+    [currentUser, filteredItems, rentalRecords]
   );
 
   const userItems = useMemo(
@@ -500,7 +807,7 @@ function App() {
           item.assignedUser === currentUser &&
           item.container === containerName
       ),
-    [items, containerName]
+    [containerName, currentUser, items]
   );
 
   const readyForPickup = useMemo(
@@ -508,12 +815,12 @@ function App() {
       userItems.filter((item) =>
         item.type === "rent" ? isRentalAvailable(item) : item.status === "Redo"
       ),
-    [userItems, rentalRecords]
+    [rentalRecords, userItems]
   );
 
   const activeRentals = useMemo(
     () => userItems.filter((item) => isRentalCheckedOutToCurrentUser(item)),
-    [userItems, rentalRecords]
+    [currentUser, rentalRecords, userItems]
   );
 
   const ownReadyCount = readyForPickup.length;
@@ -556,14 +863,18 @@ function App() {
         condition_state: conditionState ?? null,
         due_at: dueAt ?? null,
         created_at: createdAt,
-        metadata: metadata ?? {},
+        metadata: {
+          ...(metadata ?? {}),
+          auth_user_id: authSession?.user?.id ?? null,
+          auth_user_email: authSession?.user?.email ?? null,
+        },
       });
 
       if (error) {
         console.error("Error saving event log:", error);
       }
     },
-    []
+    [authSession?.user?.email, authSession?.user?.id, currentUser]
   );
 
   const addEventLogItem = ({
@@ -660,6 +971,30 @@ function App() {
     setVerifyMessage("");
     setPickupError("");
     setScannerEnabled(true);
+  };
+
+  const resetUnlockUiState = (clearPinInput = true) => {
+    setBluetoothConnected(false);
+    setIsConnecting(false);
+    setBluetoothStatus("idle");
+    setBluetoothMessage("");
+    setUnlockCodeError("");
+    setUnlockStateError("");
+
+    if (clearPinInput) {
+      setUnlockCode("");
+    }
+  };
+
+  const handleSelectContainer = (containerId: number) => {
+    setSelectedContainerId(containerId);
+    setSelectedId(null);
+    setUnlockState(null);
+    resetUnlockUiState(true);
+  };
+
+  const handleRetryProfileLoad = async () => {
+    await loadCurrentProfile();
   };
 
   const lookupItemByCode = (code: string) =>
@@ -1041,7 +1376,12 @@ function App() {
       });
     }
 
-    await fetchEventLog();
+    await Promise.all([
+      fetchEventLog(),
+      selectedItemContainer?.id
+        ? fetchUnlockState(selectedItemContainer.id)
+        : Promise.resolve(),
+    ]);
     setIsSavingPickup(false);
     setScreen("complete");
   };
@@ -1153,94 +1493,107 @@ function App() {
     };
   })();
 
-  const handleBluetoothAccess = () => {
-    if (!currentContainer) return;
+  const handleVerifyPersonalAccessCodeInline = async () => {
+    if (!currentContainer) {
+      return;
+    }
+
+    if (!authSession?.user) {
+      setUnlockStateError("Du behöver vara inloggad för att verifiera personlig kod.");
+      setBluetoothStatus("denied");
+      setBluetoothMessage(
+        "Personlig kod kräver en aktiv Supabase-session."
+      );
+      return;
+    }
 
     setUnlockCodeError("");
+    setUnlockStateError("");
 
     if (currentContainer.mode === "transport") {
       setBluetoothConnected(false);
       setIsConnecting(false);
       setBluetoothStatus("denied");
       setBluetoothMessage(
-        "Åtkomst nekad. Denna container är markerad för transport till hub."
+        "Containern är i transportläge och kan inte öppnas här."
       );
-      addEventLogItem({
-        title: "Container låst",
-        description: `${containerName} kan inte öppnas eftersom den är markerad för transport.`,
-        status: "warning",
-        containerId: currentContainer.id,
-        eventType: "container_denied_transport",
-      });
       return;
     }
 
     const enteredCode = normalizeUnlockCode(unlockCode);
-    const expectedCode = normalizeUnlockCode(currentContainer.accessCode);
 
     if (!enteredCode) {
       setBluetoothConnected(false);
       setIsConnecting(false);
       setBluetoothStatus("denied");
-      setUnlockCodeError("Ange containerkoden innan du låser upp.");
-      setBluetoothMessage("Åtkomst nekad. Ingen containerkod angiven.");
-      addEventLogItem({
-        title: "Containerkod saknas",
-        description: `${containerName} kunde inte öppnas eftersom ingen kod angavs.`,
-        status: "warning",
-        containerId: currentContainer.id,
-        eventType: "container_code_missing",
-      });
-      return;
-    }
-
-    if (enteredCode !== expectedCode) {
-      setBluetoothConnected(false);
-      setIsConnecting(false);
-      setBluetoothStatus("denied");
-      setUnlockCodeError("Fel kod. Kontrollera koden och försök igen.");
-      setBluetoothMessage("Åtkomst nekad. Containerkoden stämde inte.");
-      addEventLogItem({
-        title: "Fel containerkod",
-        description: `${containerName} nekade åtkomst efter en felaktig kod.`,
-        status: "warning",
-        containerId: currentContainer.id,
-        eventType: "container_code_wrong",
-      });
+      setUnlockCodeError("Ange din personliga kod innan upplåsning.");
+      setBluetoothMessage("Ange din personliga kod för att låsa upp containern.");
       return;
     }
 
     setIsConnecting(true);
     setBluetoothStatus("connecting");
-    setBluetoothMessage(
-      `Kod verifierad. Ansluter till ${containerName} via Bluetooth...`
-    );
+    setBluetoothMessage(`Verifierar koden för ${containerName}...`);
 
-    setTimeout(() => {
-      setBluetoothConnected(true);
-      setIsConnecting(false);
+    try {
+      const { data, error } = await untypedSupabase.rpc(
+        "verify_personal_access_code",
+        {
+          p_container_id: currentContainer.id,
+          p_entered_code: enteredCode,
+        }
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.ok) {
+        setBluetoothConnected(false);
+        setIsConnecting(false);
+        setBluetoothStatus("denied");
+
+        setUnlockCodeError("Koden är fel eller hann bytas. Försök igen.");
+        setBluetoothMessage(
+          "Koden stämde inte eller hann uppdateras. Kontrollera den aktuella koden och försök igen."
+        );
+
+        await Promise.all([
+          fetchUnlockState(currentContainer.id),
+          fetchEventLog(),
+        ]);
+        return;
+      }
+
+      setUnlockCode("");
       setBluetoothStatus("connected");
-      setBluetoothMessage(`Kod godkänd. Bluetooth ansluten till ${containerName}.`);
+      setBluetoothMessage(`Koden verifierades. Öppnar ${containerName}...`);
 
       setTimeout(() => {
+        setBluetoothConnected(true);
+        setIsConnecting(false);
         setBluetoothStatus("unlocked");
         setBluetoothMessage(
           ownReadyCount > 0
-            ? `${containerName} är nu öppnad. ${ownReadyCount} artiklar är redo för upphämtning.`
-            : `${containerName} är nu öppnad. Du har inga artiklar redo för upphämtning just nu.`
+            ? `${containerName} är upplåst. ${ownReadyCount} artiklar är redo för upphämtning eller uthyrning.`
+            : `${containerName} är upplåst. Inga artiklar är redo just nu.`
         );
-        addEventLogItem({
-          title: "Container öppnad",
-          description:
-            ownReadyCount > 0
-              ? `${containerName} öppnades efter verifierad containerkod.`
-              : `${containerName} öppnades efter verifierad containerkod, men inga artiklar är redo för upphämtning.`,
-          status: "success",
-          containerId: currentContainer.id,
-          eventType: "container_unlocked",
-        });
-      }, 1000);
-    }, 1200);
+      }, 900);
+
+      await Promise.all([
+        fetchUnlockState(currentContainer.id),
+        fetchEventLog(),
+      ]);
+    } catch (error) {
+      console.error("Error verifying personal access code:", error);
+      setBluetoothConnected(false);
+      setIsConnecting(false);
+      setBluetoothStatus("denied");
+      setUnlockStateError("Kunde inte verifiera din personliga kod just nu.");
+      setBluetoothMessage(
+        "Det gick inte att verifiera den personliga koden i databasen."
+      );
+    }
   };
 
   const detailStatusLabel = selectedItem ? getItemStatusLabel(selectedItem) : "";
@@ -1262,6 +1615,33 @@ function App() {
             title: "Bekräfta retur",
             lead: "Registrera skick och anteckningar innan materialet blir tillgängligt igen.",
           };
+
+  const unlockFeedback =
+    bluetoothStatus === "unlocked"
+      ? {
+          className: "message-box unlock-status-box unlock-status-box-success",
+          title: "Container upplåst",
+          body: bluetoothMessage,
+        }
+      : bluetoothStatus === "denied"
+        ? {
+            className: "message-box unlock-status-box unlock-status-box-warning",
+            title: "Åtkomst nekad",
+            body: bluetoothMessage,
+          }
+        : bluetoothStatus === "connecting"
+          ? {
+              className: "message-box unlock-status-box unlock-status-box-info",
+              title: "Verifierar kod",
+              body: bluetoothMessage,
+            }
+          : bluetoothStatus === "connected"
+            ? {
+                className: "message-box unlock-status-box unlock-status-box-info",
+                title: "Öppnar container",
+                body: bluetoothMessage,
+              }
+            : null;
 
   const completeHeading =
     confirmAction === "pickup"
@@ -1288,14 +1668,46 @@ function App() {
                 : "Status har uppdaterats till Uthyrbar.",
           };
 
+  if (isAuthLoading) {
+    return (
+      <main className="app-shell">
+        <div className="phone-frame">
+          <header className="topbar">
+            <p className="brand">RebuildR</p>
+            <div className="topbar-actions">
+              <span />
+              <span />
+            </div>
+          </header>
+
+          <div className="content-scroll">
+            <section className="hero-panel">
+              <p className="eyebrow">Byggläge</p>
+              <h1>Startar appen</h1>
+              <p className="lead">
+                Appen läser in session, material och containerstatus.
+              </p>
+            </section>
+
+            <section className="section">
+              <article className="card">
+                <h3>Förbereder arbetsläget</h3>
+                <p>Det här tar bara ett ögonblick.</p>
+              </article>
+            </section>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <div className="phone-frame">
         <header className="topbar">
           <p className="brand">RebuildR</p>
-          <div className="topbar-actions" aria-hidden="true">
-            <span />
-            <span />
+          <div className="topbar-meta">
+            <span className="topbar-user">{currentUser}</span>
           </div>
         </header>
 
@@ -1329,6 +1741,12 @@ function App() {
                   </div>
 
                   <strong>Inloggad: {currentUser}</strong>
+                  {(currentProfile?.email || currentProfile?.role || !authSession?.user) && (
+                    <p>
+                      {currentProfile?.email || "Antagen användare i demot"}
+                      {currentProfile?.role ? ` • Roll: ${currentProfile.role}` : ""}
+                    </p>
+                  )}
 
                   <div className="badge-row">
                     <div
@@ -1372,6 +1790,20 @@ function App() {
                       : "Containern väntar på transport till hub"}
                   </p>
 
+                  {currentContainer?.mode === "pickup" && (
+                    <p>
+                      {!isAuthenticated
+                        ? "Du behöver vara inloggad för att verifiera din personliga kod."
+                        : isLoadingUnlockState
+                        ? "Läser in personlig åtkomst till containern..."
+                        : unlockState
+                          ? unlockState.assignmentCount > 0
+                            ? `Du har ${unlockState.assignmentCount} aktiv${unlockState.assignmentCount === 1 ? "t material" : "a material"} kopplade till den här containern.`
+                            : "Du har inga aktiva material kopplade till den här containern just nu."
+                          : "Din personliga kod är redo att användas."}
+                    </p>
+                  )}
+
                   {currentContainer?.mode === "transport" && (
                     <div className="message-box" style={{ marginTop: "12px" }}>
                       <p>
@@ -1381,12 +1813,48 @@ function App() {
                     </div>
                   )}
 
+                  {profileError && (
+                    <div className="message-box message-box-soft" style={{ marginTop: "12px" }}>
+                      <p>
+                        Profilen kunde inte synkas just nu. Appen fortsätter som{" "}
+                        <strong>{currentUser}</strong>, men personlig kod och
+                        access-loggning kräver att auth-migrationen finns i Supabase.
+                      </p>
+                      {authSession?.user && (
+                        <div className="inline-actions">
+                          <button
+                            className="text-link"
+                            type="button"
+                            onClick={() => void handleRetryProfileLoad()}
+                          >
+                            Försök synka igen
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {personalAccessCode && (
+                    <div
+                      className="message-box message-box-soft unlock-session-card"
+                      style={{ marginTop: "12px" }}
+                    >
+                      <p className="unlock-session-label">Aktuell personlig kod</p>
+                      <strong>{formatUnlockPin(personalAccessCode)}</strong>
+                      {codeSecondsRemaining !== null && (
+                        <p className="unlock-session-meta">
+                          Ny kod om {codeSecondsRemaining} s
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   <div className="unlock-panel">
                     <label
                       className="unlock-label"
                       htmlFor="container-unlock-code"
                     >
-                      Containerkod
+                      Ange personlig kod
                     </label>
                     <input
                       id="container-unlock-code"
@@ -1398,7 +1866,7 @@ function App() {
                       type="text"
                       inputMode="numeric"
                       autoComplete="one-time-code"
-                      placeholder="Ange kod"
+                      placeholder="Ange din kod"
                       value={unlockCode}
                       onChange={(event) => {
                         setUnlockCode(event.target.value);
@@ -1407,41 +1875,40 @@ function App() {
                         }
                       }}
                     />
-                    <p className="unlock-hint">
-                      Ange koden för vald container innan upplåsning.
-                    </p>
                     {unlockCodeError && (
                       <p className="unlock-error">{unlockCodeError}</p>
                     )}
                   </div>
 
-                  <div className="item-action" style={{ marginTop: "12px" }}>
-                    <button
-                      className="primary-button"
-                      type="button"
-                      onClick={handleBluetoothAccess}
-                      disabled={isConnecting}
-                    >
-                      {isConnecting ? "Ansluter..." : "Verifiera kod och lås upp"}
-                    </button>
-                  </div>
-
-                  {bluetoothMessage && (
+                  {unlockStateError && (
                     <div className="message-box" style={{ marginTop: "12px" }}>
-                      <p>{bluetoothMessage}</p>
+                      <p>{unlockStateError}</p>
                     </div>
                   )}
 
-                  <div
-                    className="message-box message-box-soft"
-                    style={{ marginTop: "12px" }}
-                  >
-                    <p>
-                      QR används för att verifiera material. Bluetooth används
-                      för att öppna containern. Händelser sparas i Supabase för
-                      spårbarhet.
-                    </p>
+                  <div className="item-actions" style={{ marginTop: "12px" }}>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={() => void handleVerifyPersonalAccessCodeInline()}
+                      disabled={
+                        isConnecting ||
+                        currentContainer?.mode !== "pickup" ||
+                        !isAuthenticated
+                      }
+                    >
+                      {isConnecting
+                        ? "Verifierar..."
+                        : "Verifiera personlig kod och lås upp"}
+                    </button>
                   </div>
+
+                  {unlockFeedback && (
+                    <div className={unlockFeedback.className} style={{ marginTop: "12px" }}>
+                      <h3>{unlockFeedback.title}</h3>
+                      <p>{unlockFeedback.body}</p>
+                    </div>
+                  )}
                 </article>
 
                 <div className="filter-row" style={{ marginTop: "16px" }}>
@@ -1453,16 +1920,7 @@ function App() {
                           ? "filter-pill filter-pill-active"
                           : "filter-pill"
                       }
-                      onClick={() => {
-                        setSelectedContainerId(container.id);
-                        setSelectedId(null);
-                        setUnlockCode("");
-                        setUnlockCodeError("");
-                        setBluetoothConnected(false);
-                        setIsConnecting(false);
-                        setBluetoothStatus("idle");
-                        setBluetoothMessage("");
-                      }}
+                      onClick={() => handleSelectContainer(container.id)}
                     >
                       {container.name}
                     </button>
@@ -2383,7 +2841,7 @@ function App() {
                 <h1>Händelselogg</h1>
                 <p className="lead">
                   Senaste händelserna från skanning, verifiering, uthyrning,
-                  retur och upphämtning.
+                  retur, upphämtning och personlig containeråtkomst.
                 </p>
               </section>
 
@@ -2435,7 +2893,8 @@ function App() {
                     <h3>Inga händelser än</h3>
                     <p>
                       Loggen fylls på när någon skannar, verifierar, hyr ut,
-                      returnerar eller bekräftar en upphämtning.
+                      returnerar, använder sin personliga kod eller öppnar en
+                      container.
                     </p>
                   </article>
                 )}
