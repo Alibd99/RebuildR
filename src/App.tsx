@@ -157,6 +157,7 @@ function App() {
   const [profileError, setProfileError] = useState("");
   const [screen, setScreen] = useState<Screen>("home");
   const [filter, setFilter] = useState<Filter>("all");
+  const [isGuideOpen, setIsGuideOpen] = useState(false); 
   const [items, setItems] = useState<Material[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scanInput, setScanInput] = useState("");
@@ -1727,6 +1728,17 @@ function App() {
                   </button>
                 </div>
 
+                <div className="hero-panel-help">
+                  <button
+                    className="guide-button-floating"
+                    type="button"
+                    aria-label="Öppna guide"
+                    onClick={() => setIsGuideOpen(true)}
+                  > 
+                    ?
+                  </button>
+                </div>
+
                 <p className="eyebrow">Rosendal Etapp 2</p>
                 <h1>Min byggarbetsplats</h1>
                 <p className="lead">
@@ -1810,6 +1822,69 @@ function App() {
                         Denna container är i transportläge och kan inte öppnas
                         för individuell upphämtning.
                       </p>
+                    </div>
+                  )}
+                  
+                  {isGuideOpen && (
+                    <div className="guide-overlay" onClick={() => setIsGuideOpen(false)}>
+                      <div
+                        className="guide-modal"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <div className="guide-modal-header">
+                          <h2>Hur det fungerar</h2>
+                          <button
+                            type="button"
+                            className="guide-close"
+                            aria-label="Stäng guide"
+                            onClick={() => setIsGuideOpen(false)}
+                          >
+                            ×
+                          </button>
+                        </div>
+
+                        <div className="guide-content">
+                          <article className="guide-section">
+                            <h3>Byggläget</h3>
+                            <p>
+                              I detta läge kan du se och köpa/hyra återanvändbart material från byggarbetsplatsen. 
+                              Artiklarna lagras i containrar vid olika byggarbetsplatser där du kan hämta dem.
+                            </p>
+                          </article>
+
+                          <article className="guide-section">
+                            <h3>Containerval</h3>
+                            <p>
+                              På startskärmen kan du välja en container, detta ändrar tillstånded i appen där allt relaterat till
+                              den valda containern visas.
+                            </p>
+                          </article>
+
+                          <article className="guide-section">
+                            <h3>Skanna</h3>
+                            <p>
+                              QR-kod används och den skannas för att verifiera upphämting, uthyrning eller återlämning av en artikel. 
+                              Denna QR-kod finns tilgänglig i containern vid/på artikel.
+                            </p>
+                          </article>
+
+                          <article className="guide-section">
+                            <h3>Containeråtkomst</h3>
+                            <p>
+                              Personlig tidsbaserad engångskod används för att låsa upp vald container genom bluetooth anslutning. 
+                              Dörren kommer då bli upplåst och du kan gå in i containern för att skanna och hämta reserverad artikeln.
+                            </p>
+                          </article>
+
+                          <article className="guide-section">
+                            <h3>Hitta</h3>
+                            <p>
+                              På kartsidan kan du se containrar och öppna information om deras
+                              innehåll.
+                            </p>
+                          </article>
+                        </div>
+                      </div>
                     </div>
                   )}
 
