@@ -82,6 +82,15 @@ type UnlockState = {
   codeExpiresAt: string | null;
 };
 
+const DEMO_PROFILE: Profile = {
+  id: "demo-user",
+  email: "axelmarhold@gmail.com",
+  displayName: "Axel",
+  role: "worker",
+};
+
+const DEMO_PERSONAL_CODE_SEED = "rebuildr-demo-user-seed";
+
 const normalizeCode = (value: string) => value.trim().toLowerCase();
 
 const deriveDisplayName = (user?: User | null) => {
@@ -129,6 +138,19 @@ const createDefaultDueDate = () => {
 
 const formatUnlockPin = (value?: string | null) =>
   value ? value.replace(/(\d{3})(?=\d)/g, "$1 ").trim() : "";
+
+const computeRotatingAccessCode = (seed: string, timeMs: number) => {
+  const minuteEpoch = Math.floor(timeMs / 60000);
+  const input = `${seed}:${minuteEpoch}`;
+  let hash = 2166136261;
+
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return String(hash >>> 0).slice(-6).padStart(6, "0");
+};
 
 const toDueAtIso = (value: string) =>
   value ? new Date(`${value}T12:00:00`).toISOString() : null;
@@ -211,23 +233,21 @@ function App() {
   );
 
   const containerName = currentContainer?.name ?? "Ingen vald container";
-  const currentUser =
-    currentProfile?.displayName ||
-    deriveDisplayName(authSession?.user) ||
-    "Okänd användare";
   const isAuthenticated = Boolean(authSession?.user);
   const isAuthLoading = !isAuthReady;
-  const personalAccessCode = unlockState?.personalAccessCode || "";
-  const codeSecondsRemaining = useMemo(() => {
-    if (!unlockState?.codeExpiresAt) {
-      return null;
-    }
-
-    const remainingMs =
-      new Date(unlockState.codeExpiresAt).getTime() - clockNow;
-
-    return Math.max(0, Math.ceil(remainingMs / 1000));
-  }, [clockNow, unlockState?.codeExpiresAt]);
+  const isDemoMode = !isAuthenticated;
+  const effectiveProfile = currentProfile ?? (isDemoMode ? DEMO_PROFILE : null);
+  const currentUser =
+    effectiveProfile?.displayName ||
+    deriveDisplayName(authSession?.user) ||
+    DEMO_PROFILE.displayName;
+  const demoPersonalAccessCode = computeRotatingAccessCode(
+    DEMO_PERSONAL_CODE_SEED,
+    clockNow
+  );
+  const demoCodeExpiresAt = new Date(
+    (Math.floor(clockNow / 60000) + 1) * 60000
+  ).toISOString();
 
   const normalizeUnlockCode = (value: string) =>
     value.trim().replace(/\s+/g, "");
@@ -609,7 +629,11 @@ function App() {
   }, [fetchUnlockState, isAuthenticated, selectedContainerId]);
 
   useEffect(() => {
-    if (!isAuthenticated || !selectedContainerId || !unlockState?.codeExpiresAt) {
+    if (
+      !isAuthenticated ||
+      !selectedContainerId ||
+      !unlockState?.codeExpiresAt
+    ) {
       return;
     }
 
@@ -825,6 +849,26 @@ function App() {
   );
 
   const ownReadyCount = readyForPickup.length;
+  const activeUnlockState =
+    currentContainer?.mode === "pickup"
+      ? isDemoMode
+        ? {
+            assignmentCount: userItems.length,
+            personalAccessCode: demoPersonalAccessCode,
+            codeExpiresAt: demoCodeExpiresAt,
+          }
+        : unlockState
+      : null;
+  const personalAccessCode = activeUnlockState?.personalAccessCode ?? "";
+  const codeSecondsRemaining = activeUnlockState?.codeExpiresAt
+    ? Math.max(
+        0,
+        Math.ceil(
+          (new Date(activeUnlockState.codeExpiresAt).getTime() - clockNow) /
+            1000
+        )
+      )
+    : null;
 
   const persistEventLogItem = useCallback(
     async ({
@@ -1499,15 +1543,6 @@ function App() {
       return;
     }
 
-    if (!authSession?.user) {
-      setUnlockStateError("Du behöver vara inloggad för att verifiera personlig kod.");
-      setBluetoothStatus("denied");
-      setBluetoothMessage(
-        "Personlig kod kräver en aktiv Supabase-session."
-      );
-      return;
-    }
-
     setUnlockCodeError("");
     setUnlockStateError("");
 
@@ -1535,6 +1570,59 @@ function App() {
     setIsConnecting(true);
     setBluetoothStatus("connecting");
     setBluetoothMessage(`Verifierar koden för ${containerName}...`);
+
+    if (isDemoMode) {
+      const currentCode = computeRotatingAccessCode(
+        DEMO_PERSONAL_CODE_SEED,
+        clockNow
+      );
+      const previousCode = computeRotatingAccessCode(
+        DEMO_PERSONAL_CODE_SEED,
+        clockNow - 60000
+      );
+
+      if (enteredCode !== currentCode && enteredCode !== previousCode) {
+        setBluetoothConnected(false);
+        setIsConnecting(false);
+        setBluetoothStatus("denied");
+        setUnlockCodeError("Koden är fel eller hann bytas. Försök igen.");
+        setBluetoothMessage(
+          "Koden stämde inte eller hann uppdateras. Kontrollera den aktuella koden och försök igen."
+        );
+        addEventLogItem({
+          title: "Åtkomst nekad",
+          description: `${currentUser} försökte låsa upp ${containerName} med fel personlig kod.`,
+          status: "warning",
+          containerId: currentContainer.id,
+          eventType: "container_unlock_denied",
+          persist: false,
+        });
+        return;
+      }
+
+      setUnlockCode("");
+      setBluetoothStatus("connected");
+      setBluetoothMessage(`Koden verifierades. Öppnar ${containerName}...`);
+      addEventLogItem({
+        title: "Container upplåst",
+        description: `${currentUser} verifierade sin personliga kod och låste upp ${containerName}.`,
+        status: "success",
+        containerId: currentContainer.id,
+        eventType: "container_unlock_success",
+      });
+
+      window.setTimeout(() => {
+        setBluetoothConnected(true);
+        setIsConnecting(false);
+        setBluetoothStatus("unlocked");
+        setBluetoothMessage(
+          ownReadyCount > 0
+            ? `${containerName} är upplåst. ${ownReadyCount} artiklar är redo för upphämtning eller uthyrning.`
+            : `${containerName} är upplåst. Inga artiklar är redo just nu.`
+        );
+      }, 900);
+      return;
+    }
 
     try {
       const { data, error } = await untypedSupabase.rpc(
@@ -1753,10 +1841,12 @@ function App() {
                   </div>
 
                   <strong>Inloggad: {currentUser}</strong>
-                  {(currentProfile?.email || currentProfile?.role || !authSession?.user) && (
+                  {(effectiveProfile?.email || effectiveProfile?.role) && (
                     <p>
-                      {currentProfile?.email || "Antagen användare i demot"}
-                      {currentProfile?.role ? ` • Roll: ${currentProfile.role}` : ""}
+                      {effectiveProfile?.email}
+                      {effectiveProfile?.role
+                        ? ` • Roll: ${effectiveProfile.role}`
+                        : ""}
                     </p>
                   )}
 
@@ -1804,13 +1894,11 @@ function App() {
 
                   {currentContainer?.mode === "pickup" && (
                     <p>
-                      {!isAuthenticated
-                        ? "Du behöver vara inloggad för att verifiera din personliga kod."
-                        : isLoadingUnlockState
+                      {isLoadingUnlockState && !isDemoMode
                         ? "Läser in personlig åtkomst till containern..."
-                        : unlockState
-                          ? unlockState.assignmentCount > 0
-                            ? `Du har ${unlockState.assignmentCount} aktiv${unlockState.assignmentCount === 1 ? "t material" : "a material"} kopplade till den här containern.`
+                        : activeUnlockState
+                          ? activeUnlockState.assignmentCount > 0
+                            ? `Du har ${activeUnlockState.assignmentCount} aktiv${activeUnlockState.assignmentCount === 1 ? "t material" : "a material"} kopplade till den här containern.`
                             : "Du har inga aktiva material kopplade till den här containern just nu."
                           : "Din personliga kod är redo att användas."}
                     </p>
@@ -1888,12 +1976,11 @@ function App() {
                     </div>
                   )}
 
-                  {profileError && (
+                  {profileError && !isDemoMode && (
                     <div className="message-box message-box-soft" style={{ marginTop: "12px" }}>
                       <p>
-                        Profilen kunde inte synkas just nu. Appen fortsätter som{" "}
-                        <strong>{currentUser}</strong>, men personlig kod och
-                        access-loggning kräver att auth-migrationen finns i Supabase.
+                        Profilen kunde inte synkas just nu. Försök igen för att
+                        läsa in din användare på nytt.
                       </p>
                       {authSession?.user && (
                         <div className="inline-actions">
@@ -1968,8 +2055,7 @@ function App() {
                       onClick={() => void handleVerifyPersonalAccessCodeInline()}
                       disabled={
                         isConnecting ||
-                        currentContainer?.mode !== "pickup" ||
-                        !isAuthenticated
+                        currentContainer?.mode !== "pickup"
                       }
                     >
                       {isConnecting
