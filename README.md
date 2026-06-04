@@ -18,6 +18,20 @@ Features
 * Interactive map view
 * User authentication
 
+## Screenshots
+
+### Dashboard
+![Dashboard](screenshots/IMG_7876.jpeg)
+
+### Container Management
+![Container Management](screenshots/IMG_7877.jpeg)
+
+### Map View
+![Map View](screenshots/IMG_7878.png)
+
+### Material Discovery
+![Material Discovery](screenshots/IMG_7879.png)
+
 ## Project Overview
 
 The project explores how digital platforms can improve the reuse of construction materials by making materials easier to register, discover, and manage.
