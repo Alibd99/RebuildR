@@ -26,7 +26,7 @@ As part of a collaborative development team, I contributed to the design and dev
 
 The application is deployed using Vercel and developed with a modern React + TypeScript stack.
 
-## Run locally
+## Installation
 
 ```bash
 npm install
@@ -44,3 +44,11 @@ npm run build
 - `docs/project-brief.md`
 - `docs/webapp-start.md`
 - `src/`
+
+## Features
+
+- Material registration
+- Material search and filtering
+- User authentication
+- Responsive design
+- Cloud database with Supabase
