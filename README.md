@@ -2,7 +2,7 @@
 
 RebuildR is a web platform designed to support construction material reuse through digital material banks and AI-assisted workflows.
 
-#Technologies:
+# Technologies:
 
 * React
 * TypeScript
@@ -10,15 +10,15 @@ RebuildR is a web platform designed to support construction material reuse throu
 * Supabase
 * Vercel
 
-#Project Overview:
+# Project Overview:
 
 The project explores how digital platforms can improve the reuse of construction materials by making materials easier to register, discover, and manage.
 
-#My Contribution:
+# My Contribution:
 
 As part of a collaborative development team, I contributed to the design and development of the application using React and TypeScript. The project involved building user-facing functionality, collaborating through GitHub, and working with a cloud-based backend powered by Supabase.
 
-#Deployment:
+# Deployment:
 
 The application is deployed using Vercel and developed with a modern React + TypeScript stack.
 
