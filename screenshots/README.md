@@ -1,1 +1,1 @@
-Screenshots for RebuildR.
+Screenshots for the system.
