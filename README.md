@@ -1,3 +1,7 @@
+## Live Demo
+
+https://rebuildr.vercel.app
+
 # RebuildR
 
 RebuildR is a web platform designed to support construction material reuse through digital material banks and AI-assisted workflows.
