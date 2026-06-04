@@ -17,7 +17,15 @@ RebuildR is a web platform designed to support construction material reuse throu
 - QR code scanning
 - Interactive map view
 - User authentication
-  
+
+## Features
+
+- Material registration
+- Material search and filtering
+- User authentication
+- Responsive design
+- Cloud database with Supabase
+
 ## Project Overview:
 
 The project explores how digital platforms can improve the reuse of construction materials by making materials easier to register, discover, and manage.
@@ -49,10 +57,3 @@ npm run build
 - `docs/webapp-start.md`
 - `src/`
 
-## Features
-
-- Material registration
-- Material search and filtering
-- User authentication
-- Responsive design
-- Cloud database with Supabase
