@@ -23,7 +23,7 @@ Features
 ### Dashboard
 ![Dashboard](screenshots/IMG_7881.png)
 
-### Container Management
+### Scanner
 ![Container Management](screenshots/IMG_7877.jpeg)
 
 ### Map View
