@@ -21,7 +21,7 @@ Features
 ## Screenshots
 
 ### Dashboard
-![Dashboard](screenshots/IMG_7882.png)
+![Dashboard](screenshots/IMG_7881.png)
 
 ### Container Management
 ![Container Management](screenshots/IMG_7877.jpeg)
