@@ -24,7 +24,7 @@ Features
 ![Dashboard](screenshots/IMG_7881.png)
 
 ### Scanner
-![Container Management](screenshots/IMG_7877.jpeg)
+![Container Management](screenshots/IMG_7876.jpeg)
 
 ### Map View
 ![Map View](screenshots/IMG_7878.png)
